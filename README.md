@@ -11,7 +11,7 @@ Install · update · uninstall · start/stop · status aplikasi dari repo Anda l
 Jalankan perintah satu baris ini langsung di terminal Odroid C2 / STB HG680P Anda:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/install-tui.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/install.sh -o /tmp/install.sh && sudo sh /tmp/install.sh
 ```
 
 Atau unduh repo manual:
