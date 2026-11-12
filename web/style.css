@@ -72,6 +72,9 @@
   --danger-soft: #f08b9f;
   --good: #57a688;        /* Lumut tepi kolam */
   --border: #3b516b;
+  --shadow: #0a0f14;
+}
+
 [data-theme="slamet"] {
   --bg: #16201b;          /* Fajar lereng Gunung Slamet */
   --bg-card: #202e26;     /* Tanah subur perkebunan teh */
