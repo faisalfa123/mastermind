@@ -31,17 +31,6 @@ pub fn totp_code(secret: &[u8], unix: u64) -> u32 {
     n % 1_000_000
 }
 
-/// Accepts the current and adjacent 30 s steps (clock skew), constant-time compare.
-pub fn totp_verify(secret: &[u8], unix: u64, input: &str) -> bool {
-    let mut ok = 0u8;
-    for d in [-30i64, 0, 30] {
-        let t = (unix as i64 + d).max(0) as u64;
-        let want = format!("{:06}", totp_code(secret, t));
-        ok |= want.as_bytes().ct_eq(input.as_bytes()).unwrap_u8();
-    }
-    ok == 1
-}
-
 pub fn random_token() -> String {
     let mut b = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut b);
@@ -89,8 +78,8 @@ mod tests {
     fn totp_rfc6238_vector() {
         // RFC 6238 SHA1 secret "12345678901234567890", T=59 -> 94287082 (last 6: 287082)
         assert_eq!(totp_code(b"12345678901234567890", 59), 287082);
-        assert!(totp_verify(b"12345678901234567890", 59, "287082"));
-        assert!(!totp_verify(b"12345678901234567890", 59, "000000"));
+        assert_eq!(totp_match(b"12345678901234567890", 59, "287082"), Some(1));
+        assert_eq!(totp_match(b"12345678901234567890", 59, "000000"), None);
     }
     #[test]
     fn lockout() {
@@ -106,4 +95,64 @@ mod tests {
     }
     #[test]
     fn tokens_unique() { assert_ne!(random_token(), random_token()); assert_eq!(random_token().len(), 64); }
+}
+
+const B32: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+pub fn base32_encode(data: &[u8]) -> String {
+    let (mut out, mut buf, mut bits) = (String::new(), 0u32, 0u32);
+    for &b in data {
+        buf = (buf << 8) | b as u32;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            out.push(B32[((buf >> bits) & 31) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        out.push(B32[((buf << (5 - bits)) & 31) as usize] as char);
+    }
+    out
+}
+
+pub fn base32_decode(s: &str) -> Option<Vec<u8>> {
+    let (mut out, mut buf, mut bits) = (Vec::new(), 0u32, 0u32);
+    for c in s.bytes().filter(|c| *c != b'=') {
+        let v = B32.iter().position(|x| *x == c.to_ascii_uppercase())? as u32;
+        buf = (buf << 5) | v;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+pub fn new_totp_secret() -> Vec<u8> {
+    let mut b = vec![0u8; 20];
+    rand::rngs::OsRng.fill_bytes(&mut b);
+    b
+}
+
+#[cfg(test)]
+mod b32tests {
+    use super::*;
+    #[test]
+    fn roundtrip() {
+        let s = new_totp_secret();
+        assert_eq!(base32_decode(&base32_encode(&s)).unwrap(), s);
+        assert_eq!(base32_encode(b"foobar"), "MZXW6YTBOI");
+    }
+}
+
+/// Returns the matched 30 s step counter (for replay protection) if `input` is valid.
+pub fn totp_match(secret: &[u8], unix: u64, input: &str) -> Option<u64> {
+    let mut hit = None;
+    for d in [-30i64, 0, 30] {
+        let t = (unix as i64 + d).max(0) as u64;
+        let want = format!("{:06}", totp_code(secret, t));
+        if want.as_bytes().ct_eq(input.as_bytes()).unwrap_u8() == 1 { hit = Some(t / 30); }
+    }
+    hit
 }

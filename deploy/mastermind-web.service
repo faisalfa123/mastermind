@@ -1,0 +1,34 @@
+[Unit]
+Description=Mastermind web UI
+After=network-online.target mastermind-helper.service
+Wants=network-online.target
+Requires=mastermind-helper.service
+
+[Service]
+ExecStart=/usr/local/bin/mastermind serve
+Environment=MASTERMIND_CONFIG=/etc/mastermind/config.toml
+User=mastermind
+Group=mastermind
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/mastermind
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+MemoryMax=48M
+
+[Install]
+WantedBy=multi-user.target

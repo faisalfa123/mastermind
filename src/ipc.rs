@@ -6,9 +6,12 @@ pub enum Command {
     Start(String),
     Stop(String),
     Status(String),
+    Verify(String),
+    Quarantine(String),
 }
 
-fn valid_id(s: &str) -> bool {
+use std::io::Read;
+pub fn valid_id(s: &str) -> bool {
     !s.is_empty() && s.len() <= 32 && s.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
 }
 
@@ -26,9 +29,25 @@ impl Command {
             "start" => Ok(Command::Start(id)),
             "stop" => Ok(Command::Stop(id)),
             "status" => Ok(Command::Status(id)),
+            "verify" => Ok(Command::Verify(id)),
+            "quarantine" => Ok(Command::Quarantine(id)),
             _ => Err("unknown verb"),
         }
     }
+}
+
+/// Client side: one request line, one response line.
+pub fn call(sock: &str, line: &str) -> Result<String, String> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixStream;
+    let mut s = UnixStream::connect(sock).map_err(|e| format!("helper unreachable: {e}"))?;
+    s.set_read_timeout(Some(std::time::Duration::from_secs(60))).ok();
+    s.write_all(format!("{line}\n").as_bytes()).map_err(|e| e.to_string())?;
+    let mut out = String::new();
+    BufReader::new(s).take(4096).read_line(&mut out).map_err(|e| e.to_string())?;
+    let out = out.trim().to_string();
+    if let Some(r) = out.strip_prefix("ok") { Ok(r.trim().to_string()) }
+    else { Err(out.strip_prefix("err").unwrap_or(&out).trim().to_string()) }
 }
 
 #[cfg(test)]
@@ -43,3 +62,4 @@ mod tests {
         }
     }
 }
+

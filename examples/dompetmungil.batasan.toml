@@ -1,0 +1,20 @@
+# DompetMungil: data keuangan keluarga -> prioritas tinggi, RAM kecil, tanpa akses keluar
+[app]
+id = "dompetmungil"
+repo = "faisalfa123/DompetMungil"
+asset = "keuangan-server-linux-aarch64"
+language = "go"
+description = "Catatan keuangan keluarga kawaii (PWA)"
+
+[run]
+port = 8081
+priority = 20
+
+[limits]
+memory_max_mb = 48
+cpu_quota_pct = 30
+tasks_max = 48
+
+[permissions]
+paths_rw = ["/var/lib/mastermind/dompetmungil"]
+outbound = []

@@ -1,0 +1,25 @@
+[Unit]
+Description=Mastermind privileged helper (closed command set, no network)
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/local/bin/mastermind helper
+Environment=MASTERMIND_CONFIG=/etc/mastermind/config.toml
+User=root
+Group=mastermind
+UMask=0007
+RuntimeDirectory=mastermind
+RuntimeDirectoryMode=0770
+Restart=always
+PrivateNetwork=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=32M
+
+[Install]
+WantedBy=multi-user.target

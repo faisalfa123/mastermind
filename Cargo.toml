@@ -9,12 +9,17 @@ license = "MIT"
 argon2 = "0.5"
 hex = "0.4.3"
 hmac = "0.12"
+lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "rustls-tls", "builder", "hostname"] }
+libc = "0.2.191"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.154"
 sha1 = "0.10"
 sha2 = "0.10"
 subtle = "2.6.1"
+tiny_http = { version = "0.12.0", features = ["ssl-rustls"] }
 toml = "0.8"
+ureq = { version = "2", features = ["json", "tls"] }
 
 [profile.release]
 opt-level = "z"

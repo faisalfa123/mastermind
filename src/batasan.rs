@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use std::fmt;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Batasan {
     pub app: App,
     pub run: Run,
@@ -13,22 +13,26 @@ pub struct Batasan {
     pub permissions: Permissions,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct App {
     pub id: String,
     pub repo: String,
     pub asset: String,
     pub language: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Run {
     pub port: u16,
+    #[serde(default)]
+    pub args: Vec<String>,
     /// 0 = critical ... 100 = lowest (stopped first under memory pressure).
     pub priority: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Limits {
     pub memory_max_mb: u32,
     pub cpu_quota_pct: u8,
@@ -41,7 +45,7 @@ impl Default for Limits {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct Permissions {
     #[serde(default)]
     pub paths_rw: Vec<String>,
@@ -86,6 +90,11 @@ impl Batasan {
         }
         if self.run.port < 1024 { return Err(Error("run.port must be >= 1024".into())); }
         if self.run.priority > 100 { return Err(Error("run.priority must be 0..=100".into())); }
+        for a in &self.run.args {
+            if a.is_empty() || a.len() > 128 || !a.bytes().all(|c| c.is_ascii_alphanumeric() || b"._:=/-".contains(&c)) {
+                return Err(Error(format!("run.args contains forbidden characters: {a}")));
+            }
+        }
         let l = &self.limits;
         if l.memory_max_mb == 0 || l.memory_max_mb > MAX_MEM_MB {
             return Err(Error(format!("limits.memory_max_mb must be 1..={MAX_MEM_MB}")));

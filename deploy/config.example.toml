@@ -1,0 +1,27 @@
+# /etc/mastermind/config.toml   (root:mastermind 0640)
+# bind: ONLY loopback / LAN (RFC1918) / Tailscale (100.64.0.0/10) addresses are accepted.
+bind = "100.x.y.z"          # your Tailscale IP, or LAN IP
+port = 8443
+cert = "/etc/mastermind/tls/cert.pem"   # `mastermind admin init` creates a self-signed pair if missing
+key  = "/etc/mastermind/tls/key.pem"
+github_owner = "faisalfa123"
+# github_token = "ghp_..."      # optional: raises the API rate limit; read-only scope is enough
+# extra_repos = ["someone/else"]
+# virustotal_key = "..."        # optional hash lookup (>=3 detections blocks)
+min_free_mem_mb = 40            # below this, the lowest-priority app is stopped
+
+[ntfy]
+url = "https://ntfy.sh"
+topic = "pilih-topik-rahasia-yang-panjang"
+
+# [telegram]
+# bot_token = "123:abc"
+# chat_id = "123456"
+
+# [smtp]
+# host = "smtp.gmail.com"
+# port = 465
+# user = "kamu@gmail.com"
+# password = "APP-PASSWORD"
+# from = "Mastermind <kamu@gmail.com>"
+# to = "kamu@gmail.com"
