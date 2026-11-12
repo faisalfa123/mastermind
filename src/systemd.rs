@@ -23,8 +23,10 @@ ExecStart={bin_path} {args}
 Environment=PORT={port}
 DynamicUser=yes
 StateDirectory=mastermind/{id}
-Restart=on-failure
-RestartSec=5
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 MemoryMax={mem}M
 MemoryHigh={memhigh}M
 CPUQuota={cpu}%

@@ -1,66 +1,371 @@
 @font-face{font-family:"PS2P";src:url(/pixel.ttf) format("truetype");font-display:swap}
-:root{--bg:#1a1c2c;--panel:#29366f;--panel2:#333c57;--ink:#f4f4f4;--dim:#94b0c2;--blue:#41a6f6;--cyan:#73eff7;--yel:#ffcd75;--red:#b13e53;--org:#ef7d57;--grn:#38b764;--lgrn:#a7f070;--pur:#5d275d}
+
+/* ==========================================================================
+   PALET TEMA JEPANG ALAMI & MENENANGKAN (Zen Garden, Forest, Sakura, Onsen)
+   ========================================================================== */
+:root, [data-theme="matcha"] {
+  --bg: #151d18;          /* Hutan cemara malam yang tenang */
+  --bg-card: #1f2b23;     /* Lumut hijau gelap */
+  --panel: #27372d;       /* Daun matcha pekat */
+  --panel2: #34473b;      /* Batang kayu basah */
+  --ink: #eaf3eb;         /* Kertas washi putih lembut */
+  --dim: #9ab3a0;         /* Hijau kabut */
+  --accent: #8ac275;      /* Tunas bambu muda */
+  --accent-soft: #b6e2a6; /* Pucuk teh hijau */
+  --highlight: #e8d089;   /* Sinar matahari pagi */
+  --warm: #d99166;        /* Tembikar tanah liat */
+  --danger: #c45b5b;      /* Bunga camellia merah */
+  --danger-soft: #f48b8b;
+  --good: #63a863;        /* Bambu segar */
+  --border: #3b5243;
+  --shadow: #0b110e;
+}
+
+[data-theme="sakura"] {
+  --bg: #1c181d;          /* Senja yozakura */
+  --bg-card: #272028;     /* Kayu gelap kuil Kyoto */
+  --panel: #362c38;       /* Daun plum senja */
+  --panel2: #483a4b;      /* Bayangan lentera */
+  --ink: #f7eff6;         /* Kelopak sakura terang */
+  --dim: #ba9ebb;         /* Abu-abu lembayung */
+  --accent: #e28fae;      /* Bunga sakura mekar */
+  --accent-soft: #f8c3d5; /* Merah muda lembut */
+  --highlight: #f0dc99;   /* Cahaya lilin kuil */
+  --warm: #d98877;        /* Payung kertas wagasa */
+  --danger: #bd4865;      /* Anggur merah */
+  --danger-soft: #f0829d;
+  --good: #669e77;        /* Ranting hijau */
+  --border: #523f56;
+  --shadow: #120e13;
+}
+
+[data-theme="bamboo"] {
+  --bg: #181c19;          /* Hutan bambu berembun Arashiyama */
+  --bg-card: #222924;     /* Bambu tua */
+  --panel: #2b362f;       /* Halaman kuil batu */
+  --panel2: #38463c;      /* Lumut batu sungai */
+  --ink: #f2f7f3;         /* Kabut pagi */
+  --dim: #9eb5a5;         /* Bayangan bambu */
+  --accent: #92d492;      /* Bambu air segar */
+  --accent-soft: #c8f5c8; /* Pucuk bambu */
+  --highlight: #d4cf8a;   /* Jerami tatami */
+  --warm: #cca076;        /* Kayu hinoki */
+  --danger: #bd5959;      /* Daun maple merah */
+  --danger-soft: #ef8b8b;
+  --good: #5cb377;        /* Daun teratai */
+  --border: #44584b;
+  --shadow: #0d110e;
+}
+
+[data-theme="onsen"] {
+  --bg: #151b22;          /* Kolam air panas alam malam hari */
+  --bg-card: #1c2530;     /* Batu kali hitam basah */
+  --panel: #263445;       /* Uap mineral biru */
+  --panel2: #33445a;      /* Batuan slate */
+  --ink: #edf4fa;         /* Busa air hangat */
+  --dim: #94acc5;         /* Kabut pemandian */
+  --accent: #78b8e6;      /* Air mineral hangat */
+  --accent-soft: #b0daf8; /* Refleksi langit di air */
+  --highlight: #e8d28a;   /* Ember kayu onsen */
+  --warm: #d69772;        /* Kayu cedar panas */
+  --danger: #bf566c;      /* Kain penutup merah */
+  --danger-soft: #f08b9f;
+  --good: #57a688;        /* Lumut tepi kolam */
+  --border: #3b516b;
+  --shadow: #0a0f14;
+}
+
 *{box-sizing:border-box}
 html{image-rendering:pixelated}
-body{margin:0;background:var(--bg);color:var(--ink);font:10px/1.9 "PS2P",monospace;min-height:100vh;padding:env(safe-area-inset-top) env(safe-area-inset-right) 40px env(safe-area-inset-left)}
-.stars{position:fixed;inset:0;z-index:-1;background-image:radial-gradient(var(--dim) 1px,transparent 1px),radial-gradient(var(--blue) 1px,transparent 1px);background-size:64px 64px,97px 97px;background-position:0 0,23px 41px;opacity:.25;animation:drift 12s steps(12) infinite}
-@keyframes drift{to{background-position:0 64px,23px 138px}}
-.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:4px solid var(--panel2);background:#14152199}
-.logo{display:flex;align-items:center;gap:12px}
-h1{font-size:14px;margin:0;color:var(--yel);text-shadow:2px 2px 0 var(--red)}
-h2{font-size:11px;color:var(--cyan);margin:18px 0 10px}
-.sprite{display:inline-block;width:32px;height:32px;background:url(/favicon.png) center/cover;image-rendering:pixelated}
-.bot{animation:bob 1s steps(2) infinite}
-@keyframes bob{50%{transform:translateY(-4px)}}
-nav{display:flex;flex-wrap:wrap;gap:8px}
-button,input{font:inherit;color:var(--ink)}
-button{background:var(--blue);border:0;padding:8px 12px;cursor:pointer;box-shadow:inset -3px -3px 0 #2a5db0,inset 3px 3px 0 var(--cyan),0 0 0 3px #0e0f1a;text-transform:uppercase}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:10px/1.9 "PS2P",monospace;
+  min-height:100vh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) 40px env(safe-area-inset-left);
+  transition:background .3s steps(6), color .3s steps(6);
+}
+
+/* Partikel daun/bunga zen melayang santai */
+.zen-leaves{
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  background-image:
+    radial-gradient(var(--accent) 1px, transparent 1px),
+    radial-gradient(var(--highlight) 1px, transparent 1px);
+  background-size:80px 80px, 120px 120px;
+  background-position:0 0, 40px 60px;
+  opacity:.15;
+  animation:sway 18s steps(18) infinite;
+}
+@keyframes sway{
+  0%{background-position:0 0, 40px 60px}
+  50%{background-position:20px 60px, 60px 120px}
+  100%{background-position:0 120px, 40px 180px}
+}
+
+/* Header & Navigasi */
+.top{
+  display:flex;
+  flex-wrap:wrap;
+  gap:14px;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 18px;
+  border-bottom:4px solid var(--border);
+  background:var(--bg-card);
+  box-shadow:0 4px 0 var(--shadow);
+}
+.logo{display:flex;align-items:center;gap:14px}
+.brand h1{
+  font-size:13px;
+  margin:0;
+  color:var(--highlight);
+  text-shadow:2px 2px 0 var(--shadow);
+  letter-spacing:1px;
+}
+.sub-zen{
+  font-size:7px;
+  color:var(--accent);
+  display:block;
+  margin-top:2px;
+}
+
+/* Maskot Kodama Shell Interaktif (Eye-Tracking) */
+.kodama-mascot{
+  width:36px;
+  height:40px;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  cursor:pointer;
+  image-rendering:pixelated;
+  user-select:none;
+}
+.kodama-head{
+  width:28px;
+  height:24px;
+  background:var(--ink);
+  border-radius:12px 12px 8px 8px;
+  position:relative;
+  box-shadow:inset -2px -2px 0 var(--dim), 0 0 0 2px var(--shadow);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:6px;
+}
+.kodama-eye{
+  width:6px;
+  height:7px;
+  background:#1a211b;
+  border-radius:3px;
+  position:relative;
+  overflow:hidden;
+}
+.kodama-eye .pupil{
+  display:block;
+  width:3px;
+  height:3px;
+  background:var(--ink);
+  position:absolute;
+  top:1px;
+  left:1px;
+  transition:transform 0.08s steps(3);
+}
+.kodama-mouth{
+  position:absolute;
+  bottom:3px;
+  width:4px;
+  height:2px;
+  background:#1a211b;
+  border-radius:1px;
+}
+.kodama-shell{
+  margin-top:-2px;
+  background:var(--panel2);
+  color:var(--accent-soft);
+  font-size:7px;
+  padding:1px 4px;
+  border:2px solid var(--shadow);
+  border-radius:3px;
+  animation:bob-kodama 3s steps(3) infinite;
+}
+@keyframes bob-kodama{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-2px)}
+}
+
+/* Controls di Header */
+.header-controls{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+}
+.theme-select-wrapper{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  background:var(--panel);
+  padding:4px 8px;
+  border:2px solid var(--border);
+  box-shadow:inset 2px 2px 0 var(--shadow);
+}
+.theme-select-wrapper select{
+  background:transparent;
+  border:0;
+  color:var(--ink);
+  font:inherit;
+  font-size:8px;
+  cursor:pointer;
+  outline:0;
+}
+.fps-badge{
+  font-size:7px;
+  background:var(--panel2);
+  color:var(--accent);
+  padding:3px 6px;
+  border:2px solid var(--border);
+  box-shadow:inset 1px 1px 0 var(--shadow);
+}
+
+nav{display:flex;flex-wrap:wrap;gap:6px}
+button,input,select,textarea{font:inherit;color:var(--ink)}
+
+/* Tombol Gaya Kayu Zen & Batu Hutan */
+button{
+  background:var(--panel2);
+  border:0;
+  padding:7px 11px;
+  cursor:pointer;
+  color:var(--ink);
+  box-shadow:inset -2px -2px 0 var(--shadow), inset 2px 2px 0 var(--border), 0 0 0 2px var(--shadow);
+  text-transform:uppercase;
+  font-size:9px;
+  transition:filter .15s steps(2);
+}
 button:hover{filter:brightness(1.15)}
-button:active{transform:translate(2px,2px)}
+button:active{transform:translate(1px,1px);box-shadow:inset 2px 2px 0 var(--shadow), 0 0 0 2px var(--shadow)}
 button:disabled{filter:grayscale(1);cursor:not-allowed}
-button.on{background:var(--yel);color:#1a1c2c;box-shadow:inset -3px -3px 0 var(--org),inset 3px 3px 0 #fff2c8,0 0 0 3px #0e0f1a}
-button.ghost{background:var(--panel2);box-shadow:inset -3px -3px 0 #1d2236,inset 3px 3px 0 #566c86,0 0 0 3px #0e0f1a}
-button.danger{background:var(--red);box-shadow:inset -3px -3px 0 #6e2036,inset 3px 3px 0 var(--org),0 0 0 3px #0e0f1a}
-button.good{background:var(--grn);box-shadow:inset -3px -3px 0 #1e6b3a,inset 3px 3px 0 var(--lgrn),0 0 0 3px #0e0f1a}
-input{background:#0e0f1a;border:0;padding:10px;width:100%;box-shadow:inset 3px 3px 0 #000,0 0 0 3px var(--panel2);outline:0}
-input:focus{box-shadow:inset 3px 3px 0 #000,0 0 0 3px var(--yel)}
-main{max-width:1000px;margin:0 auto;padding:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:18px}
-.card{background:var(--panel);padding:14px;box-shadow:0 0 0 4px #0e0f1a,inset 4px 4px 0 #3b5dc9,inset -4px -4px 0 #1d2a5a;animation:pop .3s steps(4)}
-@keyframes pop{from{transform:scale(.9);opacity:0}}
-.card h3{margin:0 0 6px;font-size:11px;color:var(--yel)}
+button.on{
+  background:var(--accent);
+  color:var(--bg);
+  box-shadow:inset -2px -2px 0 #4f8040, inset 2px 2px 0 var(--accent-soft), 0 0 0 2px var(--shadow);
+}
+button.ghost{background:var(--bg-card);color:var(--dim)}
+button.good{
+  background:var(--good);
+  color:#fff;
+  box-shadow:inset -2px -2px 0 #3a6944, inset 2px 2px 0 #8fd49e, 0 0 0 2px var(--shadow);
+}
+button.restart{
+  background:var(--warm);
+  color:#fff;
+  box-shadow:inset -2px -2px 0 #7e4627, inset 2px 2px 0 #f0b592, 0 0 0 2px var(--shadow);
+}
+button.danger{
+  background:var(--danger);
+  color:#fff;
+  box-shadow:inset -2px -2px 0 #6e2727, inset 2px 2px 0 var(--danger-soft), 0 0 0 2px var(--shadow);
+}
+
+input,textarea{
+  background:var(--bg);
+  border:0;
+  padding:9px;
+  width:100%;
+  box-shadow:inset 2px 2px 0 var(--shadow), 0 0 0 2px var(--border);
+  outline:0;
+}
+input:focus,textarea:focus{box-shadow:inset 2px 2px 0 var(--shadow), 0 0 0 2px var(--accent)}
+
+main{max-width:1020px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.card{
+  background:var(--panel);
+  padding:14px;
+  box-shadow:0 0 0 3px var(--shadow), inset 3px 3px 0 var(--panel2), inset -3px -3px 0 var(--shadow);
+  border:1px solid var(--border);
+  animation:pop .25s steps(4);
+}
+@keyframes pop{from{transform:scale(.95);opacity:0}}
+.card h3{margin:0 0 6px;font-size:11px;color:var(--highlight)}
 .card p{margin:4px 0;color:var(--dim);font-size:8px;word-break:break-word}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.tag{display:inline-block;padding:2px 6px;font-size:8px;background:var(--panel2);margin-right:4px}
-.s-active{color:var(--lgrn)}.s-inactive,.s-unknown{color:var(--dim)}.s-failed{color:var(--org)}
-.led{display:inline-block;width:8px;height:8px;margin-right:6px;background:currentColor;animation:blink 1s steps(2) infinite}
-.s-inactive .led,.s-unknown .led{animation:none}
-@keyframes blink{50%{opacity:.25}}
-.bar{height:14px;background:#0e0f1a;box-shadow:0 0 0 3px #0e0f1a;margin:8px 0;position:relative;overflow:hidden}
-.bar i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--lgrn) 0 8px,#0e0f1a 8px 10px);transition:width .4s steps(8)}
-.bar.warn i{background:repeating-linear-gradient(90deg,var(--yel) 0 8px,#0e0f1a 8px 10px)}
-.bar.crit i{background:repeating-linear-gradient(90deg,var(--red) 0 8px,#0e0f1a 8px 10px)}
-.sys{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:6px}
+.row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.tag{display:inline-block;padding:2px 6px;font-size:7px;background:var(--panel2);color:var(--accent-soft);margin-right:4px;border:1px solid var(--border)}
+
+/* Status LED & Indikator */
+.s-active{color:var(--accent)}.s-inactive,.s-unknown{color:var(--dim)}.s-failed{color:var(--danger-soft)}
+.led{display:inline-block;width:7px;height:7px;margin-right:6px;background:currentColor;border-radius:1px}
+.s-active .led{animation:breathe 2s steps(8) infinite}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Bar Resource (HP Bar Kayu & Bambu) */
+.bar{height:12px;background:var(--bg);box-shadow:0 0 0 2px var(--shadow);margin:6px 0;position:relative;overflow:hidden}
+.bar i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--accent) 0 6px,var(--bg) 6px 8px);transition:width .3s steps(6)}
+.bar.warn i{background:repeating-linear-gradient(90deg,var(--highlight) 0 6px,var(--bg) 6px 8px)}
+.bar.crit i{background:repeating-linear-gradient(90deg,var(--danger) 0 6px,var(--bg) 6px 8px)}
+
+.sys{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
 .sys div{font-size:8px;color:var(--dim)}
+
+/* Login Form */
 .login{max-width:380px;margin:8vh auto;text-align:center}
-.login .sprite{width:96px;height:96px;margin-bottom:12px}
-.login label{display:block;text-align:left;margin:12px 0 6px;color:var(--cyan);font-size:8px}
-.err{color:var(--org);min-height:20px;margin-top:12px;font-size:8px}
-.banner{background:var(--org);color:#1a1c2c;text-align:center;padding:6px}
-.lock{border-left:8px solid var(--red)}
-table{width:100%;border-collapse:collapse;font-size:8px}
-td,th{padding:6px;text-align:left;border-bottom:2px solid var(--panel2);word-break:break-all}
-th{color:var(--cyan)}
-#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#0e0f1a;color:var(--yel);padding:12px 16px;box-shadow:0 0 0 4px var(--yel);display:none;max-width:90vw;z-index:9}
+.login .kodama-mascot{transform:scale(2);margin:16px auto 24px}
+.login label{display:block;text-align:left;margin:12px 0 5px;color:var(--accent);font-size:8px}
+.err{color:var(--danger-soft);min-height:20px;margin-top:12px;font-size:8px}
+.banner{background:var(--warm);color:#fff;text-align:center;padding:7px;font-size:8px}
+.lock{border-left:8px solid var(--danger)}
+
+table{width:100%;border-collapse:collapse;font-size:8px;margin-top:8px}
+td,th{padding:7px;text-align:left;border-bottom:2px solid var(--panel2);word-break:break-all}
+th{color:var(--highlight);background:var(--bg-card)}
+
+#toast{
+  position:fixed;
+  left:50%;
+  bottom:20px;
+  transform:translateX(-50%);
+  background:var(--bg-card);
+  color:var(--highlight);
+  padding:12px 18px;
+  box-shadow:0 0 0 3px var(--highlight);
+  display:none;
+  max-width:90vw;
+  z-index:99;
+  font-size:8px;
+}
 #toast.show{display:block;animation:pop .2s steps(3)}
-dialog{background:var(--panel);color:var(--ink);border:0;padding:20px;box-shadow:0 0 0 4px #0e0f1a,inset 4px 4px 0 #3b5dc9;max-width:90vw;width:380px}
-dialog::backdrop{background:#000a}
+
+dialog{
+  background:var(--panel);
+  color:var(--ink);
+  border:0;
+  padding:20px;
+  box-shadow:0 0 0 4px var(--shadow), inset 3px 3px 0 var(--panel2);
+  max-width:90vw;
+  width:400px;
+}
+dialog::backdrop{background:#000000a6}
 dialog input{margin-top:10px}
-.levelup{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;z-index:10}
-.levelup span{font-size:22px;color:var(--yel);text-shadow:4px 4px 0 var(--red);animation:lvl 1.2s steps(10) forwards}
-@keyframes lvl{0%{transform:translateY(40px) scale(.5);opacity:0}30%{transform:none;opacity:1}100%{transform:translateY(-60px);opacity:0}}
-.loading{text-align:center;color:var(--dim)}
-.loading i{display:inline-block;width:12px;height:12px;background:var(--cyan);margin:0 3px;animation:ld .8s steps(2) infinite}
+
+/* Racik Batasan Generator Form */
+.creator-container{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+@media(max-width:768px){.creator-container{grid-template-columns:1fr}}
+.creator-form label{display:block;margin:10px 0 4px;font-size:8px;color:var(--accent)}
+.creator-form .slider-val{float:right;color:var(--highlight)}
+.creator-preview textarea{height:320px;font-family:monospace;font-size:8px;line-height:1.5;resize:none}
+
+.levelup{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;z-index:100}
+.levelup span{font-size:20px;color:var(--highlight);text-shadow:3px 3px 0 var(--border);animation:lvl 1.2s steps(10) forwards}
+@keyframes lvl{0%{transform:translateY(30px) scale(.7);opacity:0}30%{transform:none;opacity:1}100%{transform:translateY(-50px);opacity:0}}
+
+.loading{text-align:center;color:var(--dim);padding:20px}
+.loading i{display:inline-block;width:10px;height:10px;background:var(--accent);margin:0 4px;animation:ld .8s steps(2) infinite}
 .loading i:nth-child(2){animation-delay:.15s}.loading i:nth-child(3){animation-delay:.3s}
-@keyframes ld{50%{transform:translateY(-8px);background:var(--yel)}}
+@keyframes ld{50%{transform:translateY(-6px);background:var(--highlight)}}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

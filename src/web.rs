@@ -301,8 +301,8 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 let b = read_json(&mut req);
                 let lockdown = app.store.lock().unwrap().state.lockdown;
                 match *action {
-                    "start" | "stop" => {
-                        if *action == "start" && lockdown { return err(423, "lockdown aktif"); }
+                    "start" | "stop" | "restart" => {
+                        if (*action == "start" || *action == "restart") && lockdown { return err(423, "lockdown aktif"); }
                         if !app.store.lock().unwrap().state.apps.contains_key(*id) { return err(404, "not installed"); }
                         match ipc::call(&app.cfg.helper_socket, &format!("{action} {id}")) {
                             Ok(_) => { app.store.lock().unwrap().log("admin", &format!("{action} {id}")); json_resp(200, json!({"message": "OK"})) }

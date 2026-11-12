@@ -41,6 +41,7 @@ pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
         Command::Remove(id) => remove(cfg, &id),
         Command::Start(id) => systemctl(cfg, &["start", &unit_name(&id)]).map(|_| String::new()),
         Command::Stop(id) => systemctl(cfg, &["stop", &unit_name(&id)]).map(|_| String::new()),
+        Command::Restart(id) => systemctl(cfg, &["restart", &unit_name(&id)]).map(|_| String::new()),
         Command::Status(id) => {
             if cfg.dry_run { return Ok("dry-run".into()); }
             let o = std::process::Command::new("systemctl").args(["is-active", &unit_name(&id)]).output().map_err(|e| e.to_string())?;

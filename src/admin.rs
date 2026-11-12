@@ -126,7 +126,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     println!("removed {id} from blacklist");
                     Ok(())
                 }
-                _ => Err("usage: mastermind admin <init [user]|passwd|totp-reset|blacklist-list|blacklist-remove <id>|audit-verify>".into()),
+                _ => Err("usage: mastermind admin <init [user]|passwd|2fa-reset|totp-reset|blacklist-list|blacklist-remove <id>|audit-verify>".into()),
             }
         }
     }
