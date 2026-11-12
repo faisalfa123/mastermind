@@ -6,11 +6,39 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum TwoFactor {
+    #[serde(rename = "totp")]
+    Totp { secret_b32: String },
+    #[serde(rename = "question")]
+    Question { question: String, answer_hash: String },
+}
+
+impl Default for TwoFactor {
+    fn default() -> Self {
+        TwoFactor::Totp { secret_b32: String::new() }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Admin {
     pub user: String,
     pub pw_hash: String,
+    #[serde(default)]
     pub totp_b32: String,
+    #[serde(default)]
+    pub two_factor: Option<TwoFactor>,
+}
+
+impl Admin {
+    pub fn get_two_factor(&self) -> TwoFactor {
+        if let Some(tf) = &self.two_factor {
+            tf.clone()
+        } else {
+            TwoFactor::Totp { secret_b32: self.totp_b32.clone() }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -142,7 +170,7 @@ mod e2e_seed {
     fn seed_e2e() {
         let dir = std::env::var("MM_E2E_DIR").expect("MM_E2E_DIR");
         let mut s = super::Store::open(&dir).unwrap();
-        s.state.admin = Some(super::Admin { user: "admin".into(), pw_hash: crate::auth::hash_password("correct horse battery"), totp_b32: crate::auth::base32_encode(b"12345678901234567890") });
+        s.state.admin = Some(super::Admin { user: "admin".into(), pw_hash: crate::auth::hash_password("correct horse battery"), totp_b32: crate::auth::base32_encode(b"12345678901234567890"), two_factor: Some(super::TwoFactor::Totp { secret_b32: crate::auth::base32_encode(b"12345678901234567890") }) });
         s.save().unwrap();
     }
 }

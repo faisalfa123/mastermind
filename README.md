@@ -27,7 +27,7 @@ Installer TUI otomatis:
 3. Memasang unit systemd (`mastermind-helper` dan `mastermind-web`).
 4. Membuka **Setup Wizard interaktif (TUI)** untuk:
    - Memilih alamat IP aman (LAN / Tailscale).
-   - Menyetel akun admin & secret **2FA (TOTP)**.
+   - Menyetel akun admin & memilih metode **2FA**: Pertanyaan Keamanan Pribadi (Human Knowing) atau Google Authenticator (TOTP).
    - Mengonfigurasi **Notifikasi Email Gmail** (Google App Password).
    - Menghasilkan sertifikat TLS HTTPS secara otomatis.
 5. Mengaktifkan daemon systemd.

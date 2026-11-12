@@ -94,7 +94,7 @@ pub fn run() -> Result<(), String> {
     cfg.port = port_str.parse().unwrap_or(8443);
 
     // 2. Akun Admin & 2FA
-    println!("\n\x1b[1;32m[2/4] Akun Admin & Otentikasi 2FA (TOTP)\x1b[0m");
+    println!("\n\x1b[1;32m[2/4] Akun Admin & Otentikasi 2FA\x1b[0m");
     let user = prompt("Username Admin", Some("admin"));
     let pw = loop {
         let p1 = prompt_password("Password Admin (minimal 12 karakter)");
@@ -109,10 +109,31 @@ pub fn run() -> Result<(), String> {
         }
         break p1;
     };
-
-    let totp_raw = auth::new_totp_secret();
-    let totp_b32 = auth::base32_encode(&totp_raw);
     let pw_hash = auth::hash_password(&pw);
+
+    println!("\nPilih Metode Lapisan Keamanan 2FA:");
+    println!("  1) Pertanyaan Keamanan Pribadi / Human Knowing (Sangat mudah, tanpa perlu app authenticator)");
+    println!("  2) Google Authenticator / TOTP App (Kode dinamis 6-digit)");
+    let tf_choice = prompt("Pilih metode 2FA (1/2)", Some("1"));
+
+    let (two_factor, totp_b32_display) = if tf_choice == "2" {
+        let totp_raw = auth::new_totp_secret();
+        let b32 = auth::base32_encode(&totp_raw);
+        (crate::store::TwoFactor::Totp { secret_b32: b32.clone() }, Some(b32))
+    } else {
+        println!("\nContoh pertanyaan: 'Apa hobiku?', 'Apa makanan favoritku?', 'Siapa nama kucing pertamaku?'");
+        let question = loop {
+            let q = prompt("Masukkan Pertanyaan Keamanan Pribadi Anda", Some("Apa hobiku?"));
+            if !q.trim().is_empty() { break q; }
+        };
+        let answer = loop {
+            let a = prompt("Jawaban Rahasia Anda (tidak membedakan huruf besar/kecil)", None);
+            if !a.trim().is_empty() { break a; }
+            println!("\x1b[1;31mJawaban tidak boleh kosong!\x1b[0m");
+        };
+        let answer_hash = auth::hash_answer(&answer);
+        (crate::store::TwoFactor::Question { question, answer_hash }, None)
+    };
 
     // 3. Notifikasi Email (Resend API / SMTP)
     println!("\n\x1b[1;32m[3/4] Notifikasi Email Alert (Resend API / Gmail)\x1b[0m");
@@ -227,12 +248,14 @@ pub fn run() -> Result<(), String> {
     std::fs::write(&cfg_path, &toml_str).map_err(|e| format!("Gagal menyimpan {cfg_path}: {e}"))?;
     println!("✓ Konfigurasi disimpan di {cfg_path}");
 
-    // Simpan State Admin & TOTP
+    // Simpan State Admin & 2FA
     let mut st = Store::open(&cfg.data_dir).map_err(|e| e.to_string())?;
+    let legacy_b32 = totp_b32_display.clone().unwrap_or_default();
     st.state.admin = Some(Admin {
         user: user.clone(),
         pw_hash,
-        totp_b32: totp_b32.clone(),
+        totp_b32: legacy_b32,
+        two_factor: Some(two_factor),
     });
     st.save().map_err(|e| e.to_string())?;
     st.log("ssh-setup", "Initial setup wizard completed");
@@ -250,9 +273,14 @@ pub fn run() -> Result<(), String> {
     println!("\n\x1b[1;32m====================================================\x1b[0m");
     println!("\x1b[1;32m             SETUP SELESAI DENGAN SUKSES!           \x1b[0m");
     println!("\x1b[1;32m====================================================\x1b[0m");
-    println!("\x1b[1;33mPENTING: Simpan Secret TOTP 2FA Anda:\x1b[0m");
-    println!("Secret Base32 : \x1b[1;37m{}\x1b[0m", totp_b32);
-    println!("URI Authenticator: \x1b[1;34motpauth://totp/Mastermind:{}?secret={}&issuer=Mastermind&algorithm=SHA1&digits=6&period=30\x1b[0m\n", user, totp_b32);
+    if let Some(b32) = totp_b32_display {
+        println!("\x1b[1;33mPENTING: Simpan Secret TOTP 2FA Anda:\x1b[0m");
+        println!("Secret Base32 : \x1b[1;37m{}\x1b[0m", b32);
+        println!("URI Authenticator: \x1b[1;34motpauth://totp/Mastermind:{}?secret={}&issuer=Mastermind&algorithm=SHA1&digits=6&period=30\x1b[0m\n", user, b32);
+    } else {
+        println!("\x1b[1;32mMetode 2FA aktif: Pertanyaan Keamanan Pribadi (Human Knowing).\x1b[0m");
+        println!("Saat login atau melakukan aksi sensitif, masukkan jawaban rahasia Anda.\n");
+    }
 
     println!("Buka Web UI di browser Anda:");
     println!("👉 \x1b[1;36mhttps://{}:{}\x1b[0m", cfg.bind, cfg.port);

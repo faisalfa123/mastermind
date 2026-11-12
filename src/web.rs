@@ -75,25 +75,48 @@ impl App {
         Some((tok, s.csrf.clone()))
     }
 
-    /// Matched TOTP step without consuming it (so a wrong password can't burn a valid code).
-    fn totp_peek(&self, code: &str) -> Option<u64> {
+    /// Verifies the second factor response (either TOTP or Security Question).
+    /// If TOTP, does not consume yet so invalid password won't burn the step.
+    fn two_factor_peek(&self, resp: &str) -> Option<u64> {
         let st = self.store.lock().unwrap();
-        let secret = auth::base32_decode(&st.state.admin.as_ref()?.totp_b32)?;
+        let admin = st.state.admin.as_ref()?;
+        let tf = admin.get_two_factor();
         drop(st);
-        auth::totp_match(&secret, store::now(), code)
+        match tf {
+            store::TwoFactor::Totp { secret_b32 } => {
+                let secret = auth::base32_decode(&secret_b32)?;
+                auth::totp_match(&secret, store::now(), resp)
+            }
+            store::TwoFactor::Question { answer_hash, .. } => {
+                if auth::verify_answer(resp, &answer_hash) {
+                    Some(1) // Marker for valid question answer
+                } else {
+                    None
+                }
+            }
+        }
     }
 
-    /// Consumes a step: each 30 s code is accepted once (replay protection).
-    fn totp_consume(&self, step: Option<u64>) -> bool {
+    fn two_factor_consume(&self, is_totp: bool, step: Option<u64>) -> bool {
         match step {
-            Some(step) => { let mut l = self.last_totp.lock().unwrap(); if step <= *l { false } else { *l = step; true } }
+            Some(step) => {
+                if is_totp {
+                    let mut l = self.last_totp.lock().unwrap();
+                    if step <= *l { false } else { *l = step; true }
+                } else {
+                    true
+                }
+            }
             None => false,
         }
     }
 
-    fn totp_ok(&self, code: &str) -> bool {
-        let step = self.totp_peek(code);
-        self.totp_consume(step)
+    fn two_factor_ok(&self, resp: &str) -> bool {
+        let st = self.store.lock().unwrap();
+        let is_totp = matches!(st.state.admin.as_ref().map(|a| a.get_two_factor()), Some(store::TwoFactor::Totp { .. }));
+        drop(st);
+        let step = self.two_factor_peek(resp);
+        self.two_factor_consume(is_totp, step)
     }
 
     fn catalog(&self, force: bool) -> (Vec<Entry>, Vec<Unconfigured>) {
@@ -188,6 +211,24 @@ fn handle(app: &Arc<App>, mut req: Request) {
             }
             if !header_of(&req, "Content-Type").map(|c| c.starts_with("application/json")).unwrap_or(false) { return err(415, "json only"); }
         }
+        if url == "/api/auth-info" && method == Method::Get {
+            let st = app.store.lock().unwrap();
+            let admin = st.state.admin.clone();
+            drop(st);
+            return match admin {
+                Some(a) => {
+                    match a.get_two_factor() {
+                        store::TwoFactor::Question { question, .. } => {
+                            json_resp(200, json!({"type": "question", "question": question}))
+                        }
+                        store::TwoFactor::Totp { .. } => {
+                            json_resp(200, json!({"type": "totp"}))
+                        }
+                    }
+                }
+                None => json_resp(200, json!({"uninitialized": true})),
+            };
+        }
         if url == "/api/me" && method == Method::Get {
             return match app.session(&req) { Some((_, c)) => json_resp(200, json!({"csrf": c})), None => json_resp(200, json!({})) };
         }
@@ -204,9 +245,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
             // Always run the expensive hash so timing doesn't reveal a wrong username.
             let pw_ok = auth::verify_password(b["password"].as_str().unwrap_or(""), &admin.pw_hash);
             let user_ok = b["user"].as_str().unwrap_or("") == admin.user;
-            let step = app.totp_peek(b["totp"].as_str().unwrap_or(""));
+            let tf_input = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+            let is_totp = matches!(admin.get_two_factor(), store::TwoFactor::Totp { .. });
+            let step = app.two_factor_peek(tf_input);
             let creds_ok = pw_ok && user_ok && step.is_some();
-            if !(creds_ok && app.totp_consume(step)) {
+            if !(creds_ok && app.two_factor_consume(is_totp, step)) {
                 let mut l = app.lockout.lock().unwrap();
                 l.fail(&ipk, Instant::now());
                 l.fail(&ak, Instant::now());
@@ -246,7 +289,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
             }
             (Method::Post, ["lockdown"]) => {
                 let b = read_json(&mut req);
-                if !app.totp_ok(b["totp"].as_str().unwrap_or("")) { return err(403, "kode 2FA salah"); }
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or(""); if !app.two_factor_ok(tf_code) { return err(403, "kode 2FA salah"); }
                 let on = b["on"].as_bool().unwrap_or(false);
                 let apps = { let mut s = app.store.lock().unwrap(); s.state.lockdown = on; s.log("admin", &format!("lockdown {on}")); s.save().ok(); s.state.apps.clone() };
                 if on { for (id, i) in apps { if i.priority > 10 { let _ = ipc::call(&app.cfg.helper_socket, &format!("stop {id}")); } } }
@@ -267,7 +310,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         }
                     }
                     "install" | "update" | "remove" => {
-                        if !app.totp_ok(b["totp"].as_str().unwrap_or("")) { return err(403, "kode 2FA salah"); }
+                        let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or(""); if !app.two_factor_ok(tf_code) { return err(403, "kode 2FA salah"); }
                         let _g = app.install_lock.lock().unwrap();
                         if *action == "remove" {
                             return match installer::uninstall(&app.cfg, &app.store, id) { Ok(_) => json_resp(200, json!({"message": "dihapus"})), Err(e) => err(500, &e) };

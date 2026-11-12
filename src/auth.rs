@@ -18,6 +18,19 @@ pub fn hash_password(pw: &str) -> String {
     argon().hash_password(pw.as_bytes(), &salt).unwrap().to_string()
 }
 
+
+pub fn normalize_answer(ans: &str) -> String {
+    ans.trim().to_lowercase()
+}
+
+pub fn hash_answer(ans: &str) -> String {
+    hash_password(&normalize_answer(ans))
+}
+
+pub fn verify_answer(ans: &str, phc: &str) -> bool {
+    verify_password(&normalize_answer(ans), phc)
+}
+
 pub fn verify_password(pw: &str, phc: &str) -> bool {
     PasswordHash::new(phc).map(|h| argon().verify_password(pw.as_bytes(), &h).is_ok()).unwrap_or(false)
 }
@@ -65,6 +78,14 @@ impl Lockout {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn security_question_case_insensitive() {
+        let hash = hash_answer("Mancing Ikan");
+        assert!(verify_answer("mancing ikan", &hash));
+        assert!(verify_answer("  MANCING IKAN  ", &hash));
+        assert!(!verify_answer("tidur", &hash));
+    }
+
     use super::*;
     #[test]
     fn password() {

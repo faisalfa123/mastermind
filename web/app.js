@@ -27,31 +27,66 @@ async function api(path, method = 'GET', body) {
   return j;
 }
 
+let authInfo = { type: 'totp' };
+
+async function fetchAuthInfo() {
+  try {
+    const j = await fetch('/api/auth-info').then(r => r.json());
+    if (j && j.type) authInfo = j;
+  } catch (_) {}
+}
+
 function ask(msg, needTotp) {
   return new Promise(res => {
     const d = $('#dlg'), t = $('#dlgtotp');
-    $('#dlgmsg').textContent = msg; t.hidden = !needTotp; t.value = '';
+    let promptText = msg;
+    if (needTotp && authInfo.type === 'question') {
+      promptText += `\n[Pertanyaan: ${authInfo.question}]`;
+      t.removeAttribute('inputmode');
+      t.removeAttribute('maxlength');
+      t.placeholder = 'JAWABAN RAHASIA';
+    } else if (needTotp) {
+      t.setAttribute('inputmode', 'numeric');
+      t.setAttribute('maxlength', '6');
+      t.placeholder = 'KODE 2FA (6-DIGIT)';
+    }
+    $('#dlgmsg').textContent = promptText;
+    t.hidden = !needTotp;
+    t.value = '';
     d.addEventListener('close', () => res(d.returnValue === 'ok' ? (needTotp ? t.value.trim() : true) : null), { once: true });
-    d.returnValue = 'cancel'; d.showModal(); if (needTotp) t.focus();
+    d.returnValue = 'cancel';
+    d.showModal();
+    if (needTotp) t.focus();
   });
 }
 
-function showLogin() {
+async function showLogin() {
   csrf = ''; nav.hidden = true; clearInterval(timer); localStorage.removeItem('mm-apps');
+  await fetchAuthInfo();
   const pw = h('input', { type: 'password', autocomplete: 'current-password', maxlength: '256', 'aria-label': 'password' });
   const user = h('input', { autocomplete: 'username', maxlength: '64', 'aria-label': 'user' });
-  const totp = h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', 'aria-label': 'kode 2FA' });
+  
+  let tfInput;
+  let tfLabel;
+  if (authInfo.type === 'question') {
+    tfLabel = `PERTANYAAN 2FA: ${authInfo.question}`;
+    tfInput = h('input', { type: 'text', autocomplete: 'off', maxlength: '128', placeholder: 'Jawaban rahasia', 'aria-label': 'jawaban keamanan' });
+  } else {
+    tfLabel = 'KODE 2FA (6 DIGIT DARI APP)';
+    tfInput = h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '123456', 'aria-label': 'kode 2FA' });
+  }
+
   const err = h('div', { class: 'err' });
   const go = async e => {
     e.preventDefault(); err.textContent = '';
     try {
-      const j = await api('login', 'POST', { user: user.value, password: pw.value, totp: totp.value.trim() });
-      csrf = j.csrf; pw.value = ''; totp.value = ''; start();
+      const j = await api('login', 'POST', { user: user.value, password: pw.value, two_factor: tfInput.value.trim() });
+      csrf = j.csrf; pw.value = ''; tfInput.value = ''; start();
     } catch (x) { err.textContent = x.message.toUpperCase(); }
   };
   view.replaceChildren(h('form', { class: 'login card', onsubmit: go },
     h('span', { class: 'sprite bot' }), h('h2', {}, 'MASUK'),
-    h('label', {}, 'USER'), user, h('label', {}, 'PASSWORD'), pw, h('label', {}, 'KODE 2FA'), totp,
+    h('label', {}, 'USER'), user, h('label', {}, 'PASSWORD'), pw, h('label', {}, tfLabel), tfInput,
     h('div', { class: 'row' }, h('button', { type: 'submit' }, 'START')), err));
   user.focus();
 }
