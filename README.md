@@ -1,40 +1,121 @@
 # 🧠 Mastermind
 
-App manager **ultra-ringan** (Rust, satu binary) untuk **STB HG680P / Odroid C2** di **DietPi**.
+App manager **native & ultra-ringan** (Rust, single static binary ~3 MB, idle RAM ~3.7 MB) untuk **STB HG680P / Odroid C2** di **DietPi / Debian**.
 Install · update · uninstall · start/stop · status aplikasi dari repo Anda lewat Web UI (PWA, gaya 16-bit) —
-**tanpa terminal, tanpa root** dari sisi web.
+**tanpa terminal, tanpa root** dari sisi web, anti-malware, dan dengan notifikasi email Gmail & WhatsApp Cloud API.
 
-## Keamanan
-| Lapisan | Detail |
-|---|---|
-| Akses | hanya bind ke loopback / LAN (RFC1918) / Tailscale; IP publik ditolak saat start. HTTPS (rustls) |
-| Login | Argon2id + **TOTP wajib** (kode sekali pakai, anti-replay), lockout bertingkat per IP & akun, sesi HttpOnly/Secure/SameSite=Strict, idle 15 mnt, CSRF token + cek Origin |
-| Aksi sensitif | install/update/hapus/lockdown meminta **kode 2FA ulang** |
-| Pemisahan hak | `mastermind-web` (user `mastermind`, tanpa privilege) → unix socket → `mastermind-helper` (root, **tanpa jaringan**) yang hanya menerima 7 perintah tetap `<verb> <app-id>`; tidak ada shell/path bebas |
-| Sandbox app | tiap app: systemd `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, kapabilitas kosong, `SystemCallFilter`, `MemoryMax/CPUQuota/TasksMax`, akses jaringan keluar ditolak kecuali diizinkan |
-| Anti-malware | unduh rilis GitHub → **wajib cocok checksum** → validasi ELF aarch64 + heuristik (miner, reverse shell, botnet) + opsional VirusTotal → **diulang oleh helper**. Terdeteksi ⇒ tidak dipasang, di-uninstall, masuk **blacklist** (id + hash) |
-| Blacklist | file milik root; UI hanya **baca**. Hapus hanya: `sudo mastermind admin blacklist-remove <id>` lewat SSH |
-| Integritas | hash binary terpasang dicek berkala; berubah ⇒ app dihentikan + notifikasi |
-| Audit | log berantai-hash (tamper-evident), terlihat di UI & `mastermind admin audit-verify` |
-| Memori | watchdog: RAM tersisa < `min_free_mem_mb` ⇒ app berprioritas terendah dihentikan (prioritas ≤10 tidak pernah) |
+---
 
-## Aturan per aplikasi: `<id>.batasan.toml`
-Letakkan di root repo aplikasi (lihat [examples/](examples)). Mastermind menemukan repo otomatis
-(`github_owner`), memvalidasi, dan menampilkannya di **Katalog**; install tetap butuh klik + 2FA Anda.
-Rilis harus memuat aset arm64 **dan** `checksums.txt` (`sha256sum`). Validasi: `mastermind validate x.batasan.toml`.
+## ⚡ Cara Install Cepat (TUI Wizard)
 
-## Pasang (DietPi, arm64)
+Jalankan perintah satu baris ini langsung di terminal Odroid C2 / STB HG680P Anda:
+
 ```sh
-sudo sh deploy/install.sh ./mastermind-linux-arm64     # unduh dari GitHub Actions/Releases
-sudo nano /etc/mastermind/config.toml                  # bind (IP Tailscale/LAN), notifikasi
-sudo mastermind admin init <user>                      # password + secret TOTP (scan ke Authenticator)
-sudo systemctl enable --now mastermind-helper mastermind-web
+curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/install-tui.sh | sudo sh
 ```
-Buka `https://<ip>:8443` → "Install ke layar utama" (PWA).
 
-## Notifikasi
-ntfy, Telegram, email SMTP (`mastermind notify-test`). WhatsApp: belum; hanya lewat Cloud API resmi Meta (rencana).
+Atau unduh repo manual:
+```sh
+git clone https://github.com/faisalfa123/mastermind.git
+cd mastermind
+sudo sh deploy/install.sh
+```
 
-## Pengembangan
-`cargo test` (31 tes) · `cargo clippy -- -D warnings` · rilis: `cargo zigbuild --release --target aarch64-unknown-linux-musl`.
-Font piksel: Press Start 2P (OFL). Ikon: `python3 scripts/gen_icons.py`.
+Installer TUI otomatis:
+1. Mendeteksi arsitektur perangkat (ARM64 / AArch64) dan memasang binary `mastermind`.
+2. Membuat user sistem sandbox `mastermind` dan direktori data aman.
+3. Memasang unit systemd (`mastermind-helper` dan `mastermind-web`).
+4. Membuka **Setup Wizard interaktif (TUI)** untuk:
+   - Memilih alamat IP aman (LAN / Tailscale).
+   - Menyetel akun admin & secret **2FA (TOTP)**.
+   - Mengonfigurasi **Notifikasi Email Gmail** (Google App Password).
+   - Menghasilkan sertifikat TLS HTTPS secara otomatis.
+5. Mengaktifkan daemon systemd.
+
+---
+
+## 📧 Panduan Notifikasi Email Gmail (SMTP)
+
+Mastermind mengirimkan email otomatis ketika:
+- Deteksi malware / binary hash mencurigakan.
+- Percobaan login gagal berulang kali (lockout).
+- Modifikasi binary terdeteksi (tamper alert).
+- Memori perangkat kritis dan watchdog mematikan aplikasi berprioritas rendah.
+
+### Cara Mendapatkan Google App Password (16 Huruf):
+1. Buka [Keamanan Akun Google](https://myaccount.google.com/security).
+2. Pastikan **Verifikasi 2 Langkah (2-Step Verification)** sudah aktif.
+3. Cari menu **Sandi Aplikasi (App Passwords)** atau buka langsung: [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+4. Beri nama aplikasi, misalnya `Mastermind Odroid`, lalu klik **Buat**.
+5. Salin 16 huruf sandi yang muncul (contoh: `abcd efgh ijkl mnop`). Masukkan sandi ini tanpa spasi saat wizard instalasi meminta Google App Password.
+
+Jika ingin menguji email setelah install:
+```sh
+sudo mastermind notify-test
+```
+
+---
+
+## 🛡️ Arsitektur Keamanan & Proteksi Anti-Hack
+
+| Fitur | Implementasi & Manfaat |
+|---|---|
+| **Akses Terbatas** | Menolak bind ke internet publik (0.0.0.0). Hanya menerima alamat loopback (`127.0.0.1`), LAN pribadi (`192.168.x.x`), atau **Tailscale** (`100.64.0.0/10`). Wajib HTTPS (rustls). |
+| **Otentikasi Berlapis** | Password di-hash dengan **Argon2id** (OWASP compliant). Wajib **TOTP 2FA** (RFC 6238) dengan perlindungan *anti-replay* (setiap kode hanya valid 1x). Lockout bertingkat per IP & akun jika 5x gagal. |
+| **Aksi Sensitif 2FA Ulang** | Tombol Install, Update, Hapus, dan Lockdown di Web UI selalu meminta input kode TOTP ulang sebelum dieksekusi. |
+| **Tanpa Akses Shell / Root** | Pemisahan hak akses: `mastermind-web` berjalan sebagai user biasa tanpa hak istimewa. Segala aksi sistem dikirim lewat Unix Socket ke `mastermind-helper` yang hanya menerima **enum 7 perintah tetap** (`<verb> <id-app>`). Tidak ada eksekusi shell string atau path bebas. |
+| **Scanner Malware Mandiri** | File binary diperiksa sebelum diinstal: validasi ELF aarch64, pengecekan string miner (`xmrig`, `stratum`), reverse shell, botnet, dan opsional VirusTotal API. Helper memverifikasi ulang binary sebelum memasangnya. |
+| **Blacklist Terkunci** | Binary yang terdeteksi berbahaya langsung dibatalkan, dicopot, dan dimasukkan ke file Blacklist root. Di Web UI hanya bisa dilihat (read-only); penghapusan blacklist **hanya bisa dilakukan lewat terminal SSH**: `sudo mastermind admin blacklist-remove <id>`. |
+| **Sandbox systemd per App** | Setiap aplikasi berjalan di bawah isolasi: `DynamicUser=yes`, `NoNewPrivileges=yes`, `ProtectSystem=strict`, `MemoryMax`, `CPUQuota`, dan pembatasan network outbound sesuai rule. |
+| **Audit Log Anti-Manipulasi** | Log peristiwa diikat berantai dengan SHA-256 (hash-chain). Jika ada log yang dihapus atau diedit oleh penyerang, rantai hash akan terdeteksi rusak. |
+
+---
+
+## 📦 Menghubungkan Aplikasi: `<id>.batasan.toml`
+
+Mastermind secara otomatis mendeteksi aplikasi dari akun GitHub Anda (`github_owner = "faisalfa123"`). Agar aplikasi Anda dapat diinstal di Mastermind:
+
+1. Buat file `<nama-app>.batasan.toml` di root repository Anda (contoh: `dompetmungil.batasan.toml`, `senandung.batasan.toml`).
+2. Sediakan rilis binary `aarch64` / `arm64` dan file `checksums.txt` pada GitHub Releases.
+
+Contoh konfigurasi `senandung.batasan.toml`:
+```toml
+[app]
+id = "senandung"
+repo = "faisalfa123/Senandung"
+asset = "senandung-linux-arm64"
+language = "go"
+description = "Spotify-like PWA self-hosted dengan sinkronisasi multi-device"
+
+[run]
+port = 8080
+priority = 50
+
+[limits]
+memory_max_mb = 96
+cpu_quota_pct = 50
+tasks_max = 64
+
+[permissions]
+paths_rw = ["/var/lib/mastermind/senandung"]
+paths_ro = ["/srv/music"]
+outbound = []
+```
+
+Uji validitas file rule kapan saja dengan:
+```sh
+mastermind validate senandung.batasan.toml
+```
+
+---
+
+## 💡 Saran & Rekomendasi Pengembangan Lanjutan
+
+1. **GitHub Actions Workflow Rilis Seragam:**
+   - Tambahkan workflow GitHub Actions pada setiap repo Anda (`DompetMungil`, `Senandung`, dll.) yang membuat binary `linux/arm64` musl secara otomatis dan menghasilkan `checksums.txt` (`sha256sum`).
+2. **Koneksi Tailscale Subnet Router / Tailscale Serve:**
+   - Gunakan `tailscale cert` untuk mendapatkan sertifikat resmi domain MagicDNS Tailscale tanpa browser warning self-signed.
+3. **WhatsApp Notifikasi:**
+   - Gunakan WhatsApp Cloud API resmi (Meta for Developers) agar aman 100% dari risiko nomor diblokir/banned.
+4. **PWA Standalone:**
+   - Buka Web UI di Chrome/Brave di HP/Laptop melalui jaringan Tailscale, klik ikon **"Install App / Tambahkan ke Layar Utama"** untuk tampilan aplikasi fullscreen bergaya 16-bit tanpa browser bar.
