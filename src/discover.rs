@@ -72,6 +72,35 @@ pub fn parse_checksum(text: &str, asset: &str) -> Option<String> {
 
 pub fn fetch_text(url: &str) -> Result<String, String> { get_text(url) }
 
+/// Normalizes user input (e.g. "https://github.com/owner/repo" or "owner/repo") to "owner/repo" safely.
+pub fn parse_repo(input: &str) -> Result<String, String> {
+    let s = input.trim().trim_end_matches('/');
+    let s = s.strip_prefix("https://github.com/").or_else(|| s.strip_prefix("http://github.com/")).unwrap_or(s);
+    let parts: Vec<&str> = s.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return Err("format harus owner/repo atau https://github.com/owner/repo".into());
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+    let valid_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.';
+    if !owner.chars().all(valid_char) || !repo.chars().all(valid_char) {
+        return Err("karakter nama repo tidak valid".into());
+    }
+    Ok(format!("{owner}/{repo}"))
+}
+
+/// Inspect a single repository for .batasan.toml and arm64 release asset
+pub fn inspect_repo(cfg: &Config, repo: &str) -> Result<Entry, String> {
+    let list = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/"))?;
+    let file = list.as_array().and_then(|a| a.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)))
+        .ok_or_else(|| format!("{repo}: tidak ditemukan file *.batasan.toml di root repo"))?;
+    let url = file["download_url"].as_str().ok_or("tidak ada download_url untuk *.batasan.toml")?;
+    let t = get_text(url)?;
+    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest"))
+        .map_err(|e| format!("{repo}: belum ada rilis terbaru (GitHub release): {e}"))?;
+    build_entry(repo, &t, &rel)
+}
+
 pub fn discover(cfg: &Config) -> (Vec<Entry>, Vec<Unconfigured>) {
     let (mut ok, mut bad) = (Vec::new(), Vec::new());
     let mut repos: Vec<String> = Vec::new();
@@ -83,17 +112,10 @@ pub fn discover(cfg: &Config) -> (Vec<Entry>, Vec<Unconfigured>) {
     repos.extend(cfg.extra_repos.iter().cloned());
     repos.dedup();
     for repo in repos {
-        let list = match get(cfg, &format!("https://api.github.com/repos/{repo}/contents/")) { Ok(v) => v, Err(e) => { bad.push(Unconfigured { repo, reason: e }); continue; } };
-        let file = list.as_array().and_then(|a| a.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)));
-        let Some(url) = file.and_then(|f| f["download_url"].as_str()) else {
-            bad.push(Unconfigured { repo, reason: "no *.batasan.toml (not installable yet)".into() });
-            continue;
-        };
-        let res = get_text(url).and_then(|t| {
-            let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest"))?;
-            build_entry(&repo, &t, &rel)
-        });
-        match res { Ok(e) => ok.push(e), Err(e) => bad.push(Unconfigured { repo, reason: e }) }
+        match inspect_repo(cfg, &repo) {
+            Ok(e) => ok.push(e),
+            Err(e) => bad.push(Unconfigured { repo, reason: e }),
+        }
     }
     (ok, bad)
 }
@@ -127,5 +149,15 @@ mod tests {
         assert_eq!(parse_checksum(&format!("{h}  senandung-linux-arm64\n"), "senandung-linux-arm64"), Some(h.clone()));
         assert_eq!(parse_checksum(&format!("{h}  other\n"), "senandung-linux-arm64"), None);
         assert_eq!(parse_checksum(&h, "x"), Some(h));
+    }
+    #[test]
+    fn parse_repo_cases() {
+        assert_eq!(parse_repo("faisalfa123/Senandung").unwrap(), "faisalfa123/Senandung");
+        assert_eq!(parse_repo("https://github.com/faisalfa123/DompetMungil/").unwrap(), "faisalfa123/DompetMungil");
+        assert_eq!(parse_repo("http://github.com/faisalfa123/kompic").unwrap(), "faisalfa123/kompic");
+        assert!(parse_repo("https://evil.com/a/b").is_err());
+        assert!(parse_repo("singleword").is_err());
+        assert!(parse_repo("owner/repo/extra").is_err());
+        assert!(parse_repo("owner/repo;rm -rf /").is_err());
     }
 }

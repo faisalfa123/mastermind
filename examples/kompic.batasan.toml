@@ -1,0 +1,21 @@
+# Contoh <id>.batasan.toml untuk Kompic (Immich media optimizer & ecosystem monitor)
+[app]
+id = "kompic"
+repo = "faisalfa123/kompic"
+asset = "kompic-linux-arm64"
+language = "go"
+description = "Immich Media Optimizer & Ecosystem Monitor untuk Odroid C2"
+
+[run]
+port = 5555
+priority = 40
+
+[limits]
+memory_max_mb = 96
+cpu_quota_pct = 40
+tasks_max = 64
+
+[permissions]
+paths_rw = ["/var/lib/mastermind/kompic"]
+paths_ro = ["/var/log"]
+outbound = []

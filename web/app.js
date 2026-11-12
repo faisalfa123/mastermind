@@ -27,7 +27,16 @@ function initTheme() {
     sel.addEventListener('change', () => {
       document.documentElement.dataset.theme = sel.value;
       localStorage.setItem('mm-theme', sel.value);
+      if (window.MastermindScene) window.MastermindScene.setTheme(sel.value);
       toast('TEMA: ' + sel.options[sel.selectedIndex].text.toUpperCase());
+    });
+  }
+  const animSel = $('#anim-select');
+  if (animSel) {
+    animSel.value = localStorage.getItem('mm-anim') || 'full';
+    animSel.addEventListener('change', () => {
+      if (window.MastermindScene) window.MastermindScene.setAnimMode(animSel.value);
+      toast(animSel.options[animSel.selectedIndex].text.toUpperCase());
     });
   }
 }
@@ -171,6 +180,7 @@ async function showLogin() {
   };
 
   const kodamaLogo = h('div', { class: 'kodama-mascot' },
+    h('div', { class: 'kodama-caping' }),
     h('div', { class: 'kodama-head' },
       h('div', { class: 'kodama-eye left' }, h('span', { class: 'pupil' })),
       h('div', { class: 'kodama-eye right' }, h('span', { class: 'pupil' })),
@@ -361,11 +371,87 @@ function renderCreator() {
 }
 
 /* ==========================================================================
+   SITUS VIEW (Install by Site / Custom GitHub Repo)
+   ========================================================================== */
+async function renderSites() {
+  const topBar = await sysbar();
+  const card = h('div', { class: 'card' });
+  const repoInput = h('input', { placeholder: 'faisalfa123/Senandung atau https://github.com/...', autocomplete: 'off' });
+  const resultBox = h('div', { class: 'sites-result', style: 'margin-top:14px' });
+
+  const inspectBtn = h('button', { class: 'good', onclick: async () => {
+    const val = repoInput.value.trim();
+    if (!val) { toast('Masukkan nama repo atau URL GitHub'); return; }
+    resultBox.replaceChildren(h('p', { class: 'loading' }, 'Memeriksa repo...'));
+    try {
+      const res = await api('sites/inspect', 'POST', { repo: val });
+      if (!res.ok) {
+        resultBox.replaceChildren(h('div', { class: 'card lock' },
+          h('h4', {}, 'BELUM BISA DIINSTALL LANGSUNG'),
+          h('p', {}, `Alasan: ${res.reason}`),
+          h('p', { class: 'dim' }, 'Solusi: Buat file .batasan.toml di menu "RACIK BATASAN", lalu tambahkan ke rilis repo GitHub Anda.')));
+        return;
+      }
+      const e = res.entry;
+      const addAndInstallBtn = h('button', { class: 'good', onclick: async () => {
+        await sensitive(`TAMBAHKAN SITUS ${e.repo}?`, code => api('sites/add', 'POST', { repo: e.repo, totp: code }));
+        toast('Situs ditambahkan ke katalog!');
+        tab = 'catalog';
+        render();
+      } }, 'TAMBAHKAN KE KATALOG');
+
+      resultBox.replaceChildren(h('div', { class: 'card' },
+        h('h3', {}, `${e.id} (${e.version})`),
+        h('p', {}, e.description || e.repo),
+        h('p', {},
+          h('span', { class: 'tag' }, `PORT :${e.port}`),
+          h('span', { class: 'tag' }, e.language.toUpperCase()),
+          h('span', { class: 'tag' }, `${e.memory_max_mb}MB / ${e.cpu_quota_pct}% CPU`)),
+        h('div', { class: 'row' }, addAndInstallBtn)));
+    } catch (err) {
+      resultBox.replaceChildren(h('p', { class: 'err' }, err.message.toUpperCase()));
+    }
+  } }, 'PERIKSA REPO');
+
+  card.append(
+    h('h3', {}, 'PASANG APLIKASI DARI SITUS / REPO GITHUB'),
+    h('p', { class: 'dim' }, 'Masukkan alamat repository GitHub publik (misal: faisalfa123/Senandung atau https://github.com/faisalfa123/DompetMungil)'),
+    h('div', { class: 'row' }, repoInput, inspectBtn),
+    resultBox
+  );
+
+  // List of active custom sites
+  let customSitesBox = h('div');
+  try {
+    const s = await api('sites');
+    if (s.sites && s.sites.length) {
+      customSitesBox = h('div', { class: 'card', style: 'margin-top:16px' },
+        h('h3', {}, 'DAFTAR SITUS TERDAFTAR'),
+        h('table', {},
+          h('tr', {}, h('th', {}, 'REPOSITORY'), h('th', {}, 'AKSI')),
+          s.sites.map(r => h('tr', {},
+            h('td', {}, r),
+            h('td', {}, h('button', { class: 'danger', onclick: async () => {
+              await sensitive(`HAPUS SITUS ${r}?`, code => api('sites/remove', 'POST', { repo: r, totp: code }));
+              render();
+            } }, 'Hapus'))))));
+    }
+  } catch (_) {}
+
+  view.replaceChildren(...[topBar, card, customSitesBox].filter(Boolean));
+}
+
+/* ==========================================================================
    RENDER & ROUTER
    ========================================================================== */
 async function render() {
   document.querySelectorAll('nav [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   try {
+    if (tab === 'sites') {
+      await renderSites();
+      return;
+    }
+
     if (tab === 'creator') {
       const topBar = await sysbar();
       const creatorEl = renderCreator();

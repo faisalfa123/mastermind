@@ -12,11 +12,12 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="zen-leaves" aria-hidden="true"></div>
+<canvas id="zen-canvas" aria-hidden="true"></canvas>
 <header class="top">
   <div class="logo">
-    <!-- Interactive Kodama Shell Mascot with Cursor Eye Tracking -->
-    <div class="kodama-mascot" id="kodama-mascot" title="Kodama Shell (Roh Hutan Mastermind)">
+    <!-- Interactive Shell Bumiayu Mascot with Cursor Eye Tracking -->
+    <div class="kodama-mascot" id="kodama-mascot" title="Shell Bumiayu (Cangkang Terminal & Gunung Slamet)">
+      <div class="kodama-caping"></div>
       <div class="kodama-head">
         <div class="kodama-eye left"><span class="pupil"></span></div>
         <div class="kodama-eye right"><span class="pupil"></span></div>
@@ -26,7 +27,7 @@
     </div>
     <div class="brand">
       <h1>MASTERMIND</h1>
-      <span class="sub-zen">木霊・ZEN MANAGER</span>
+      <span class="sub-zen">BUMIAYU ZEN MANAGER</span>
     </div>
   </div>
 
@@ -39,6 +40,17 @@
         <option value="sakura">Sakura Dusk</option>
         <option value="bamboo">Bamboo Mist</option>
         <option value="onsen">Onsen Slate</option>
+        <option value="slamet">Slamet Dawn</option>
+      </select>
+    </div>
+
+    <!-- Anim Mode Switcher -->
+    <div class="theme-select-wrapper">
+      <span class="theme-icon">🎨</span>
+      <select id="anim-select" aria-label="Mode Animasi Latar">
+        <option value="full">Anim: Penuh</option>
+        <option value="eco">Anim: Hemat</option>
+        <option value="off">Anim: Mati</option>
       </select>
     </div>
 
@@ -48,6 +60,7 @@
     <nav id="nav" hidden>
       <button data-tab="apps" class="on">APPS</button>
       <button data-tab="catalog">KATALOG</button>
+      <button data-tab="sites">SITUS</button>
       <button data-tab="creator">RACIK BATASAN</button>
       <button data-tab="blacklist">&#9760; BLACKLIST</button>
       <button data-tab="audit">AUDIT</button>
@@ -72,6 +85,7 @@
   </form>
 </dialog>
 
+<script src="/scene.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

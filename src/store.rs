@@ -61,6 +61,8 @@ pub struct State {
     pub apps: BTreeMap<String, Installed>,
     #[serde(default)]
     pub lockdown: bool,
+    #[serde(default)]
+    pub sites: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

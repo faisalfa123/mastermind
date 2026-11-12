@@ -72,7 +72,22 @@
   --danger-soft: #f08b9f;
   --good: #57a688;        /* Lumut tepi kolam */
   --border: #3b516b;
-  --shadow: #0a0f14;
+[data-theme="slamet"] {
+  --bg: #16201b;          /* Fajar lereng Gunung Slamet */
+  --bg-card: #202e26;     /* Tanah subur perkebunan teh */
+  --panel: #2d3e33;       /* Perkebunan teh Kaligua */
+  --panel2: #3d5445;      /* Daun teh basah */
+  --ink: #fdfaf2;         /* Kabut fajar cerah */
+  --dim: #a5bfae;         /* Siluet pegunungan */
+  --accent: #f2ba63;      /* Sinar fajar keemasan Slamet */
+  --accent-soft: #f9d89c; /* Cahaya pagi */
+  --highlight: #f8cf74;   /* Emas fajar */
+  --warm: #d97843;        /* Tanah merah bawang Brebes */
+  --danger: #c44f4f;      /* Bunga liar merah */
+  --danger-soft: #f58484;
+  --good: #6dbd72;        /* Ladang hijau */
+  --border: #476352;
+  --shadow: #0c120f;
 }
 
 *{box-sizing:border-box}
@@ -87,23 +102,14 @@ body{
   transition:background .3s steps(6), color .3s steps(6);
 }
 
-/* Partikel daun/bunga zen melayang santai */
-.zen-leaves{
+/* Canvas Latar Bergambar & Beranimasi Realtime */
+#zen-canvas{
   position:fixed;
   inset:0;
+  width:100vw;
+  height:100vh;
   z-index:-1;
-  background-image:
-    radial-gradient(var(--accent) 1px, transparent 1px),
-    radial-gradient(var(--highlight) 1px, transparent 1px);
-  background-size:80px 80px, 120px 120px;
-  background-position:0 0, 40px 60px;
-  opacity:.15;
-  animation:sway 18s steps(18) infinite;
-}
-@keyframes sway{
-  0%{background-position:0 0, 40px 60px}
-  50%{background-position:20px 60px, 60px 120px}
-  100%{background-position:0 120px, 40px 180px}
+  pointer-events:none;
 }
 
 /* Header & Navigasi */
@@ -133,10 +139,10 @@ body{
   margin-top:2px;
 }
 
-/* Maskot Kodama Shell Interaktif (Eye-Tracking) */
+/* Maskot Shell Bumiayu Interaktif (Eye-Tracking + Slamet / Tea Sprout) */
 .kodama-mascot{
-  width:36px;
-  height:40px;
+  width:38px;
+  height:44px;
   position:relative;
   display:flex;
   flex-direction:column;
@@ -144,6 +150,27 @@ body{
   cursor:pointer;
   image-rendering:pixelated;
   user-select:none;
+}
+.kodama-caping{
+  width:0;
+  height:0;
+  border-left:14px solid transparent;
+  border-right:14px solid transparent;
+  border-bottom:8px solid var(--accent);
+  position:relative;
+  z-index:2;
+  margin-bottom:-2px;
+  filter:drop-shadow(0 2px 0 var(--shadow));
+}
+.kodama-caping::after{
+  content:'';
+  position:absolute;
+  top:2px;
+  left:-4px;
+  width:8px;
+  height:3px;
+  background:var(--highlight);
+  border-radius:1px;
 }
 .kodama-head{
   width:28px;
@@ -188,9 +215,10 @@ body{
   background:var(--panel2);
   color:var(--accent-soft);
   font-size:7px;
-  padding:1px 4px;
+  padding:2px 5px;
   border:2px solid var(--shadow);
-  border-radius:3px;
+  border-radius:4px;
+  box-shadow:inset 1px 1px 0 var(--accent);
   animation:bob-kodama 3s steps(3) infinite;
 }
 @keyframes bob-kodama{

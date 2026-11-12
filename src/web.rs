@@ -124,7 +124,16 @@ impl App {
             let c = self.cat.lock().unwrap();
             if !force { if let Some(at) = c.at { if at.elapsed() < CAT_TTL { return (c.entries.clone(), c.bad.clone()); } } }
         }
-        let (e, b) = discover::discover(&self.cfg);
+        let mut cfg = self.cfg.clone();
+        {
+            let s = self.store.lock().unwrap();
+            for site in &s.state.sites {
+                if !cfg.extra_repos.contains(site) {
+                    cfg.extra_repos.push(site.clone());
+                }
+            }
+        }
+        let (e, b) = discover::discover(&cfg);
         let mut c = self.cat.lock().unwrap();
         // Keep the old catalog if GitHub was unreachable (empty result + errors).
         if !(e.is_empty() && !c.entries.is_empty() && !b.is_empty()) { c.entries = e; c.bad = b; }
@@ -190,6 +199,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
             "/" | "/index.html" => Some(asset(include_bytes!("../web/index.html"), "text/html; charset=utf-8")),
             "/style.css" => Some(asset(include_bytes!("../web/style.css"), "text/css; charset=utf-8")),
             "/app.js" => Some(asset(include_bytes!("../web/app.js"), "text/javascript; charset=utf-8")),
+            "/scene.js" => Some(asset(include_bytes!("../web/scene.js"), "text/javascript; charset=utf-8")),
             "/sw.js" => Some(asset(include_bytes!("../web/sw.js"), "text/javascript; charset=utf-8")),
             "/manifest.webmanifest" => Some(asset(include_bytes!("../web/manifest.webmanifest"), "application/manifest+json")),
             "/pixel.ttf" => Some(asset(include_bytes!("../web/pixel.ttf"), "font/ttf")),
@@ -282,6 +292,60 @@ fn handle(app: &Arc<App>, mut req: Request) {
             (Method::Post, ["refresh"]) => json_resp(200, apps_json(app, true)),
             (Method::Get, ["system"]) => json_resp(200, system_info(app)),
             (Method::Get, ["blacklist"]) => json_resp(200, json!({"items": store::read_blacklist(&app.cfg.locked_dir)})),
+            (Method::Get, ["sites"]) => {
+                let s = app.store.lock().unwrap();
+                json_resp(200, json!({"sites": s.state.sites}))
+            }
+            (Method::Post, ["sites", "inspect"]) => {
+                let b = read_json(&mut req);
+                let input = b["repo"].as_str().unwrap_or("");
+                let repo = match discover::parse_repo(input) {
+                    Ok(r) => r,
+                    Err(e) => return err(400, &e),
+                };
+                match discover::inspect_repo(&app.cfg, &repo) {
+                    Ok(e) => json_resp(200, json!({"ok": true, "entry": e})),
+                    Err(e) => json_resp(200, json!({"ok": false, "repo": repo, "reason": e})),
+                }
+            }
+            (Method::Post, ["sites", "add"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "kode 2FA salah"); }
+                let input = b["repo"].as_str().unwrap_or("");
+                let repo = match discover::parse_repo(input) {
+                    Ok(r) => r,
+                    Err(e) => return err(400, &e),
+                };
+                {
+                    let mut s = app.store.lock().unwrap();
+                    if !s.state.sites.contains(&repo) {
+                        s.state.sites.push(repo.clone());
+                        s.log("admin", &format!("site-add {repo}"));
+                        s.save().ok();
+                    }
+                }
+                app.catalog(true);
+                json_resp(200, json!({"message": format!("Situs {repo} berhasil ditambahkan")}))
+            }
+            (Method::Post, ["sites", "remove"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "kode 2FA salah"); }
+                let input = b["repo"].as_str().unwrap_or("");
+                let repo = match discover::parse_repo(input) {
+                    Ok(r) => r,
+                    Err(e) => return err(400, &e),
+                };
+                {
+                    let mut s = app.store.lock().unwrap();
+                    s.state.sites.retain(|r| r != &repo);
+                    s.log("admin", &format!("site-remove {repo}"));
+                    s.save().ok();
+                }
+                app.catalog(true);
+                json_resp(200, json!({"message": format!("Situs {repo} dihapus")}))
+            }
             (Method::Get, ["audit"]) => {
                 let s = app.store.lock().unwrap();
                 let items: Vec<Value> = s.audit.entries.iter().rev().take(200).map(|e| json!({"ts": e.ts, "actor": e.actor, "action": e.action})).collect();
