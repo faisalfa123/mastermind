@@ -32,6 +32,7 @@ pub struct Config {
     pub ntfy: Option<Ntfy>,
     pub telegram: Option<Telegram>,
     pub smtp: Option<Smtp>,
+    pub resend: Option<Resend>,
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -40,6 +41,8 @@ pub struct Config {
 pub struct Ntfy { pub url: String, pub topic: String, pub token: Option<String> }
 #[derive(Debug, Deserialize, Clone)]
 pub struct Telegram { pub bot_token: String, pub chat_id: String }
+#[derive(Debug, Deserialize, Clone)]
+pub struct Resend { pub api_key: String, pub to: String }
 #[derive(Debug, Deserialize, Clone)]
 pub struct Smtp { pub host: String, pub port: u16, pub user: String, pub password: String, pub from: String, pub to: String }
 

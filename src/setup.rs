@@ -114,22 +114,46 @@ pub fn run() -> Result<(), String> {
     let totp_b32 = auth::base32_encode(&totp_raw);
     let pw_hash = auth::hash_password(&pw);
 
-    // 3. Notifikasi Email Gmail
-    println!("\n\x1b[1;32m[3/4] Notifikasi Email Gmail (SMTP)\x1b[0m");
-    println!("Mengirim alert ke email jika ada deteksi malware, login, atau tamper.");
-    println!("Untuk Gmail, gunakan Google App Password (16 huruf):");
-    println!("(Buka https://myaccount.google.com/apppasswords untuk membuat App Password)");
-    let setup_gmail = prompt("Aktifkan notifikasi Gmail sekarang? (y/n)", Some("y")).to_lowercase() == "y";
+    // 3. Notifikasi Email (Resend API / SMTP)
+    println!("\n\x1b[1;32m[3/4] Notifikasi Email Alert (Resend API / Gmail)\x1b[0m");
+    println!("Mengirim alert ke email jika ada malware terdeteksi, login, atau tamper.");
+    println!("Pilihan metode email:");
+    println!("  1) Resend API (Sangat Mudah: gratis, tanpa password email, daftar di https://resend.com)");
+    println!("  2) Gmail SMTP (Butuh Google App Password 16-huruf)");
+    println!("  3) Lewati konfigurasi email sekarang");
+    let method = prompt("Pilih metode (1/2/3)", Some("1"));
 
-    if setup_gmail {
-        let gmail_addr = loop {
-            let addr = prompt("Alamat Email Gmail Anda (contoh: user@gmail.com)", None);
+    if method == "1" {
+        let email_to = loop {
+            let addr = prompt("Alamat Email Gmail Anda penerima alert (contoh: kamu@gmail.com)", None);
             if addr.contains('@') && addr.contains('.') {
                 break addr;
             }
             println!("\x1b[1;31mFormat email tidak valid!\x1b[0m");
         };
+        let api_key = prompt_password("Resend API Key (dimulai dengan re_...)");
+        let clean_key = api_key.trim().to_string();
 
+        cfg.resend = Some(crate::config::Resend {
+            api_key: clean_key,
+            to: email_to,
+        });
+
+        println!("\nMenguji pengiriman email alert via Resend API...");
+        let errs = notify::send_blocking(&cfg, "Setup Berhasil", "Mastermind berhasil dipasang di Odroid C2 / HG680P!");
+        if errs.is_empty() {
+            println!("\x1b[1;32m✓ Email test terkirim via Resend! Cek kotak masuk Gmail Anda.\x1b[0m");
+        } else {
+            println!("\x1b[1;33mPeringatan: Gagal mengirim email uji:\x1b[0m");
+            for e in errs { println!("  - {e}"); }
+            println!("Anda dapat mengubah konfigurasi ini nanti di {}", cfg_path);
+        }
+    } else if method == "2" {
+        let gmail_addr = loop {
+            let addr = prompt("Alamat Email Gmail Anda (contoh: user@gmail.com)", None);
+            if addr.contains('@') && addr.contains('.') { break addr; }
+            println!("\x1b[1;31mFormat email tidak valid!\x1b[0m");
+        };
         let app_pw = prompt_password("Google App Password 16 huruf (tanpa spasi)");
         let clean_pw = app_pw.replace(' ', "");
 
@@ -142,15 +166,13 @@ pub fn run() -> Result<(), String> {
             to: gmail_addr,
         });
 
-        println!("\nMenguji pengiriman email alert...");
+        println!("\nMenguji pengiriman email alert via SMTP...");
         let errs = notify::send_blocking(&cfg, "Setup Berhasil", "Mastermind berhasil dipasang di Odroid C2 / HG680P!");
         if errs.is_empty() {
             println!("\x1b[1;32m✓ Email test terkirim! Cek kotak masuk Gmail Anda.\x1b[0m");
         } else {
             println!("\x1b[1;33mPeringatan: Gagal mengirim email uji:\x1b[0m");
-            for e in errs {
-                println!("  - {e}");
-            }
+            for e in errs { println!("  - {e}"); }
             println!("Anda dapat mengubah konfigurasi ini nanti di {}", cfg_path);
         }
     }
@@ -185,6 +207,12 @@ pub fn run() -> Result<(), String> {
     );
     if let (Some(c), Some(k)) = (&cfg.cert, &cfg.key) {
         toml_str.push_str(&format!("cert = \"{c}\"\nkey = \"{k}\"\n"));
+    }
+    if let Some(r) = &cfg.resend {
+        toml_str.push_str(&format!(
+            "\n[resend]\napi_key = \"{}\"\nto = \"{}\"\n",
+            r.api_key, r.to
+        ));
     }
     if let Some(s) = &cfg.smtp {
         toml_str.push_str(&format!(

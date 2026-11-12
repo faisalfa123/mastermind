@@ -26,6 +26,26 @@ pub fn send_blocking(cfg: &Config, title: &str, body: &str) -> Vec<String> {
             errs.push(format!("telegram: {}", e.to_string().replace(&tg.bot_token, "***")));
         }
     }
+    if let Some(r) = &cfg.resend {
+        let res = {
+            let body_json = serde_json::json!({
+                "from": "Mastermind <onboarding@resend.dev>",
+                "to": [&r.to],
+                "subject": format!("[Mastermind] {title}"),
+                "text": body,
+            });
+            let resp = ureq::post("https://api.resend.com/emails")
+                .set("Authorization", &format!("Bearer {}", r.api_key))
+                .set("Content-Type", "application/json")
+                .timeout(t)
+                .send_json(body_json);
+            match resp {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("resend: {e}")),
+            }
+        };
+        if let Err(e) = res { errs.push(e); }
+    }
     if let Some(s) = &cfg.smtp {
         let res = (|| -> Result<(), String> {
             let m = Message::builder()

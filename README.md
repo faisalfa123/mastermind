@@ -42,12 +42,18 @@ Mastermind mengirimkan email otomatis ketika:
 - Modifikasi binary terdeteksi (tamper alert).
 - Memori perangkat kritis dan watchdog mematikan aplikasi berprioritas rendah.
 
-### Cara Mendapatkan Google App Password (16 Huruf):
-1. Buka [Keamanan Akun Google](https://myaccount.google.com/security).
-2. Pastikan **Verifikasi 2 Langkah (2-Step Verification)** sudah aktif.
-3. Cari menu **Sandi Aplikasi (App Passwords)** atau buka langsung: [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
-4. Beri nama aplikasi, misalnya `Mastermind Odroid`, lalu klik **Buat**.
-5. Salin 16 huruf sandi yang muncul (contoh: `abcd efgh ijkl mnop`). Masukkan sandi ini tanpa spasi saat wizard instalasi meminta Google App Password.
+### Pilihan Metode Notifikasi Email:
+
+#### 1. Resend API (Sangat Direkomendasikan jika tidak bisa Google App Password):
+1. Buka [https://resend.com](https://resend.com) lalu daftar akun gratis (cukup sign in dengan GitHub/Email).
+2. Masuk ke menu **API Keys** lalu klik **Create API Key**.
+3. Salin API key yang berawalan `re_...`.
+4. Masukkan API key tersebut dan alamat Gmail Anda saat setup wizard berjalan. Email alert akan langsung dikirim ke Gmail Anda tanpa repot otentikasi SMTP Google.
+
+#### 2. Gmail SMTP (Menggunakan Google App Password 16-Huruf):
+1. Buka [Keamanan Akun Google](https://myaccount.google.com/security) (Verifikasi 2 Langkah wajib aktif).
+2. Buka [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) lalu buat password aplikasi 16 huruf.
+3. Masukkan 16 huruf sandi tersebut saat setup wizard.
 
 Jika ingin menguji email setelah install:
 ```sh

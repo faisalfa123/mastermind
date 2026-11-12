@@ -18,6 +18,10 @@ topic = "pilih-topik-rahasia-yang-panjang"
 # bot_token = "123:abc"
 # chat_id = "123456"
 
+# [resend]
+# api_key = "re_123456789"
+# to = "kamu@gmail.com"
+
 # [smtp]
 # host = "smtp.gmail.com"
 # port = 465
