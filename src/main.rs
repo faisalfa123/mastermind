@@ -1,3 +1,7 @@
+#![allow(dead_code)] // wired up by later phases
+mod audit;
+mod auth;
+mod ipc;
 mod batasan;
 
 fn main() {

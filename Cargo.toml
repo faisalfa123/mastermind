@@ -6,7 +6,14 @@ description = "Ultra-light secure app manager for STB HG680P / Odroid C2 (DietPi
 license = "MIT"
 
 [dependencies]
+argon2 = "0.5"
+hex = "0.4.3"
+hmac = "0.12"
+rand = "0.8"
 serde = { version = "1", features = ["derive"] }
+sha1 = "0.10"
+sha2 = "0.10"
+subtle = "2.6.1"
 toml = "0.8"
 
 [profile.release]
