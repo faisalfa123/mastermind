@@ -1,3 +1,66 @@
+
+function showInstallTerminal(appId, title) {
+  let modal = document.getElementById('term-modal');
+  if (modal) modal.remove();
+
+  const body = h('div', { class: 'term-body' },
+    h('div', { class: 'term-line info' }, `[MASTERMIND] Memulai instalasi ${appId}...`),
+    h('span', { class: 'term-cursor' })
+  );
+  const closeBtn = h('button', { class: 'ghost', disabled: true, onclick: () => modal.remove() }, 'Tutup');
+  
+  modal = h('div', { id: 'term-modal', class: 'term-modal' },
+    h('div', { class: 'term-window' },
+      h('div', { class: 'term-header' },
+        h('div', { class: 'dots' },
+          h('span', { class: 'dot dot-red' }),
+          h('span', { class: 'dot dot-yellow' }),
+          h('span', { class: 'dot dot-green' })
+        ),
+        h('span', {}, title || `INSTALL CONSOLE: ${appId}`),
+        h('span', { style: 'width: 40px;' })
+      ),
+      body,
+      h('div', { class: 'term-footer' }, closeBtn)
+    )
+  );
+  document.body.appendChild(modal);
+
+  let timer = setInterval(async () => {
+    try {
+      const res = await api(`apps/${appId}/install-logs`, 'GET');
+      if (res && Array.isArray(res.logs) && res.logs.length) {
+        body.innerHTML = '';
+        res.logs.forEach(l => {
+          let cls = 'term-line';
+          if (l.includes('[SUCCESS]') || l.includes('installed')) cls += ' success';
+          else if (l.includes('[ERROR]') || l.includes('failed') || l.includes('blocked')) cls += ' error';
+          else if (l.includes('[-]')) cls += ' info';
+          body.appendChild(h('div', { class: cls }, l));
+        });
+        body.appendChild(h('span', { class: 'term-cursor' }));
+        body.scrollTop = body.scrollHeight;
+
+        const last = res.logs[res.logs.length - 1];
+        if (last.includes('[SUCCESS]') || last.includes('[ERROR]') || last.includes('installed') || last.includes('Gagal')) {
+          closeBtn.disabled = false;
+          closeBtn.classList.remove('ghost');
+          closeBtn.classList.add('good');
+          clearInterval(timer);
+        }
+      }
+    } catch (_) {}
+  }, 600);
+
+  return {
+    finish: () => {
+      closeBtn.disabled = false;
+      closeBtn.classList.remove('ghost');
+      closeBtn.classList.add('good');
+    }
+  };
+}
+
 'use strict';
 const $ = s => document.querySelector(s);
 const view = $('#view'), nav = $('#nav');
@@ -223,7 +286,12 @@ function appCard(a) {
   const act = (name, label, cls) => h('button', { class: cls || '', onclick: async () => {
     const needs = ['install', 'update', 'remove'].includes(name);
     const run = async code => api(`apps/${a.id}/${name}`, 'POST', { totp: code });
+    let term = null;
+    if (name === 'install' || name === 'update') {
+      term = showInstallTerminal(a.id, `${name.toUpperCase()}: ${a.id}`);
+    }
     const r = needs ? await sensitive(`${label.toUpperCase()} ${a.id}?`, run) : await run().then(x => (toast('OK'), x)).catch(e => toast('GAGAL: ' + e.message));
+    if (term) term.finish();
     if (r && (name === 'install' || name === 'update')) levelUp(name === 'install' ? 'LEVEL UP!' : 'UPGRADED!');
     render();
   } }, label);

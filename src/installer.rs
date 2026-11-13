@@ -16,14 +16,23 @@ pub fn download(url: &str, max: u64) -> Result<Vec<u8>, String> {
     Ok(v)
 }
 
+#[allow(dead_code)]
 pub fn install(cfg: &Config, st: &std::sync::Mutex<Store>, e: &Entry) -> Result<String, String> {
+    install_with_logger(cfg, st, e, &|_| {})
+}
+
+pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Store>, e: &Entry, log: &F) -> Result<String, String> {
+    log(&format!("[-] Memeriksa status blacklist untuk {}...", e.id));
     let bl = store::read_blacklist(&cfg.locked_dir);
     if bl.iter().any(|b| b.id == e.id || b.repo.eq_ignore_ascii_case(&e.repo)) { return Err("app is blacklisted (unlock via SSH)".into()); }
     let b = e.batasan.as_ref().ok_or("catalog entry has no parsed rules")?;
+    log(&format!("[1/5] Mengunduh binary {} dari {}...", e.id, e.asset_url));
     let bin = download(&e.asset_url, 96 << 20)?;
+    log(&format!("[+] Download selesai ({} bytes)", bin.len()));
     let digest = hex::encode(Sha256::digest(&bin));
     if bl.iter().any(|x| x.sha256 == digest) { return Err("binary hash is blacklisted".into()); }
 
+    log("[2/5] Memverifikasi SHA256 integrity...");
     // 1. integrity: published checksum must match
     let curl = e.checksum_url.as_ref().ok_or("release has no checksums file; refusing unverified binary")?;
     let expected = discover::parse_checksum(&discover::fetch_text(curl)?, &b.app.asset).ok_or("asset not listed in checksums file")?;
@@ -34,6 +43,8 @@ pub fn install(cfg: &Config, st: &std::sync::Mutex<Store>, e: &Entry) -> Result<
     }
 
     // 2. static scan (+ optional VirusTotal)
+    log(&format!("[+] Checksum valid (sha256: {})", &digest[..16]));
+    log("[3/5] Memindai biner terhadap ancaman malware / skrip berbahaya...");
     let mut verdict = scanner::scan(&bin);
     if let Some(k) = &cfg.virustotal_key {
         match scanner::virustotal(&digest, k) {
@@ -42,6 +53,7 @@ pub fn install(cfg: &Config, st: &std::sync::Mutex<Store>, e: &Entry) -> Result<
             Err(err) => verdict.warnings.push(format!("VirusTotal unavailable: {err}")),
         }
     }
+    log("[4/5] Menyiapkan isolasi folder & file staging...");
     let dir = Path::new(&cfg.data_dir).join("staging").join(&e.id);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -60,6 +72,7 @@ pub fn install(cfg: &Config, st: &std::sync::Mutex<Store>, e: &Entry) -> Result<
     }
 
     // 3. privileged install (helper re-validates everything independently)
+    log(&format!("[5/5] Memasang service systemd & mengunci jail /var/lib/mastermind/{}...", e.id));
     match ipc::call(&cfg.helper_socket, &format!("install {}", e.id)) {
         Ok(h) => {
             let mut g = st.lock().unwrap();

@@ -29,6 +29,7 @@ pub struct App {
     cat: Mutex<Cat>,
     last_totp: Mutex<u64>,
     install_lock: Mutex<()>,
+    install_logs: Mutex<HashMap<String, Vec<String>>>,
 }
 
 type Resp = Response<std::io::Cursor<Vec<u8>>>;
@@ -360,6 +361,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 crate::notify::send(&app.cfg, "Lockdown", &format!("lockdown = {on}"));
                 json_resp(200, json!({"message": if on { "LOCKDOWN aktif" } else { "lockdown dimatikan" }}))
             }
+            (Method::Get, ["apps", id, "install-logs"]) => {
+                let logs = app.install_logs.lock().unwrap();
+                let list = logs.get(*id).cloned().unwrap_or_default();
+                json_resp(200, json!({ "logs": list }))
+            }
             (Method::Post, ["apps", id, action]) => {
                 if !ipc::valid_id(id) { return err(400, "bad id"); }
                 let b = read_json(&mut req);
@@ -385,7 +391,30 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         if *action == "install" && installed { return err(409, "already installed"); }
                         let (entries, _) = app.catalog(false);
                         let Some(e) = entries.iter().find(|e| e.id == *id) else { return err(404, "not in catalog") };
-                        match installer::install(&app.cfg, &app.store, e) { Ok(m) => json_resp(200, json!({"message": m})), Err(e) => err(422, &e) }
+                        let app_id = id.to_string();
+                        {
+                            let mut logs = app.install_logs.lock().unwrap();
+                            logs.insert(app_id.clone(), vec![format!("[*] Memulai instalasi {}...", app_id)]);
+                        }
+                        let app_ref = app.clone();
+                        let id_for_log = app_id.clone();
+                        let logger = move |msg: &str| {
+                            let mut logs = app_ref.install_logs.lock().unwrap();
+                            if let Some(list) = logs.get_mut(&id_for_log) {
+                                if list.len() > 500 { list.remove(0); }
+                                list.push(msg.to_string());
+                            }
+                        };
+                        match installer::install_with_logger(&app.cfg, &app.store, e, &logger) {
+                            Ok(m) => {
+                                logger(&format!("[SUCCESS] {}", m));
+                                json_resp(200, json!({"message": m}))
+                            }
+                            Err(e) => {
+                                logger(&format!("[ERROR] Gagal: {}", e));
+                                err(422, &e)
+                            }
+                        }
                     }
                     _ => err(404, "unknown action"),
                 }
@@ -441,7 +470,7 @@ pub fn serve(cfg: Config) -> Result<(), String> {
     };
     let store = Store::open(&cfg.data_dir).map_err(|e| format!("store: {e}"))?;
     let app = Arc::new(App { cfg, store: Mutex::new(store), sessions: Mutex::new(HashMap::new()), lockout: Mutex::new(Lockout::default()),
-        cat: Mutex::new(Cat::default()), last_totp: Mutex::new(0), install_lock: Mutex::new(()) });
+        cat: Mutex::new(Cat::default()), last_totp: Mutex::new(0), install_lock: Mutex::new(()), install_logs: Mutex::new(HashMap::new()) });
     eprintln!("mastermind web listening on {addr}");
     watchdogs(app.clone());
     let active = Arc::new(AtomicUsize::new(0));

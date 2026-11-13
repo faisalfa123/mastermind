@@ -400,3 +400,42 @@ dialog input{margin-top:10px}
 @keyframes ld{50%{transform:translateY(-6px);background:var(--highlight)}}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* Modal Terminal TUI/Shell */
+.term-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.term-window {
+  width: 90%; max-width: 680px; height: 420px;
+  background: var(--bg-card); border: 2px solid var(--accent);
+  border-radius: 8px; display: flex; flex-direction: column;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.term-header {
+  background: var(--bg-head, rgba(0,0,0,0.25)); padding: 8px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border); font-size: 13px; font-weight: bold;
+}
+.term-header .dots { display: flex; gap: 6px; }
+.term-header .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot-red { background: #ff5f56; } .dot-yellow { background: #ffbd2e; } .dot-green { background: #27c93f; }
+.term-body {
+  flex: 1; padding: 12px; overflow-y: auto; background: rgba(0,0,0,0.3);
+  color: var(--fg); font-size: 13px; line-height: 1.5;
+}
+.term-line { margin: 2px 0; word-break: break-all; }
+.term-line.success { color: #5af78e; font-weight: bold; }
+.term-line.error { color: #ff5c57; font-weight: bold; }
+.term-line.info { color: var(--accent); }
+.term-cursor {
+  display: inline-block; width: 8px; height: 14px; background: var(--accent);
+  vertical-align: middle; animation: blink 1s infinite;
+}
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+.term-footer {
+  padding: 8px 12px; border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; background: var(--bg-head, rgba(0,0,0,0.1));
+}
