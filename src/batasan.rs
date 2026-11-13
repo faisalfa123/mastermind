@@ -68,6 +68,13 @@ const LANGS: [&str; 5] = ["go", "rust", "c", "zig", "nim"];
 const MAX_MEM_MB: u32 = 512;
 pub const TOOLS: [&str; 6] = ["yt-dlp", "ffmpeg", "ffprobe", "git", "curl", "python3"];
 const FORBIDDEN: [&str; 8] = ["/", "/etc", "/root", "/home", "/boot", "/proc", "/sys", "/dev"];
+const FORBIDDEN_TREES: [&str; 8] = ["/usr", "/bin", "/sbin", "/lib", "/opt/mastermind", "/var/lib/mastermind", "/run", "/var/run"];
+
+fn forbidden(p: &str, jail: &str) -> bool {
+    if p == jail || p.starts_with(&format!("{jail}/")) { return false; }
+    let under = |f: &str| p == f || p.starts_with(&format!("{f}/"));
+    FORBIDDEN.iter().filter(|f| **f != "/").any(|f| under(f)) || FORBIDDEN_TREES.iter().any(|f| under(f))
+}
 
 impl Batasan {
     pub fn parse(s: &str) -> Result<Self, Error> {
@@ -106,16 +113,13 @@ impl Batasan {
         if l.cpu_quota_pct == 0 || l.cpu_quota_pct > 100 {
             return Err(Error("limits.cpu_quota_pct must be 1..=100".into()));
         }
+        let jail = format!("/var/lib/mastermind/{id}");
         for p in self.permissions.paths_rw.iter().chain(&self.permissions.paths_ro) {
-            if !p.starts_with('/') || p.contains("..") || FORBIDDEN.contains(&p.as_str()) {
+            if !p.starts_with('/') || p.contains("..") || p.contains("//") || p.len() > 200
+                || !p.bytes().all(|c| c.is_ascii_alphanumeric() || b"/._-".contains(&c))
+                || FORBIDDEN.contains(&p.as_str()) || forbidden(p, &jail)
+            {
                 return Err(Error(format!("forbidden path: {p}")));
-            }
-        }
-        for p in &self.permissions.paths_rw {
-            let jail = format!("/var/lib/mastermind/{id}");
-            let ok = p == &jail || p.strip_prefix(&format!("{jail}/")).is_some_and(|r| !r.is_empty() && !r.contains("//"));
-            if !ok {
-                return Err(Error(format!("paths_rw must stay inside the jail {jail}: {p}")));
             }
         }
         for t in &self.permissions.tools {
@@ -150,10 +154,10 @@ paths_ro = ["/srv/music"]
     #[test] fn valid() { assert!(Batasan::parse(OK).is_ok()); }
     #[test] fn bad_lang() { assert!(Batasan::parse(&OK.replace("\"go\"", "\"python\"")).is_err()); }
     #[test] fn bad_path() { assert!(Batasan::parse(&OK.replace("/srv/music", "/etc")).is_err()); }
-    #[test] fn bad_rw() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/srv/x")).is_err()); }
-    #[test] fn jail_sibling_rejected() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/other")).is_err()); }
-    #[test] fn jail_prefix_trick_rejected() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/senandung2")).is_err()); }
-    #[test] fn jail_subdir_ok() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/senandung/music")).is_ok()); }
+    #[test] fn external_rw_ok() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/mnt/hdd1/senandung")).is_ok()); }
+    #[test] fn external_rw_sub_ok() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/mnt/hdd1/senandung/sub")).is_ok()); }
+    #[test] fn forbidden_subtree() { for p in ["/etc/x", "/home/u", "/proc/1"] { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", p)).is_err(), "{p}"); } }
+    #[test] fn sibling_jail_rejected() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/other")).is_err()); }
     #[test] fn bad_tool() { assert!(Batasan::parse(&format!("{OK}tools = [\"bash\"]\n")).is_err()); }
     #[test] fn bad_mem() { assert!(Batasan::parse(&OK.replace("= 96", "= 9000")).is_err()); }
     #[test] fn low_port() { assert!(Batasan::parse(&OK.replace("8080", "80")).is_err()); }

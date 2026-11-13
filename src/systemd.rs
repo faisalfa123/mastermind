@@ -8,7 +8,7 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     let nice = p / 5; // 0..20
     let oom = (p as i32 * 8) - 200; // -200 (protected) .. +600 (killed first)
     let mut rw = String::new();
-    for path in &b.permissions.paths_rw { rw.push_str(&format!("ReadWritePaths={path}\n")); }
+    for path in &b.permissions.paths_rw { rw.push_str(&format!("BindPaths=-{path}\nRequiresMountsFor={path}\n")); }
     let mut ro = String::new();
     for path in &b.permissions.paths_ro { ro.push_str(&format!("BindReadOnlyPaths={path}\n")); }
     let jail = format!("/var/lib/mastermind/{id}");
@@ -94,5 +94,13 @@ mod tests {
         for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "TemporaryFileSystem=/:ro", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
             assert!(u.contains(needle), "missing {needle}");
         }
+    }
+
+    #[test]
+    fn external_rw_is_bound_only_when_declared() {
+        let b = Batasan::parse("[app]\nid=\"x\"\nrepo=\"o/x\"\nasset=\"x\"\nlanguage=\"go\"\n[run]\nport=9000\npriority=50\n[permissions]\npaths_rw=[\"/mnt/hdd1/x\"]\n").unwrap();
+        let u = unit(&b, "/opt/mastermind/apps/x/bin/x");
+        assert!(u.contains("BindPaths=-/mnt/hdd1/x"));
+        assert!(!u.contains("hdd2"));
     }
 }

@@ -16,6 +16,5 @@ cpu_quota_pct = 50
 tasks_max = 64
 
 [permissions]
-paths_rw = ["/var/lib/mastermind/senandung"]
-paths_ro = ["/srv/music"]
+paths_rw = ["/var/lib/mastermind/senandung", "/mnt/hdd1/senandung"]
 outbound = []
