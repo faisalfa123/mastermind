@@ -39,12 +39,12 @@ pub fn analyze(texts: &[String]) -> Findings {
 }
 
 /// Draft a validated `.batasan.toml`; port/mem are user-adjustable in the confirmation screen.
-pub fn draft(repo: &str, f: &Findings, port: u16, mem_mb: u32) -> Result<String, String> {
+pub fn draft(repo: &str, f: &Findings, port: u16, mem_mb: u32, asset: &str) -> Result<String, String> {
     let name = repo.split('/').nth(1).ok_or("repo must be owner/name")?;
     let id: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let tools = f.tools.iter().map(|t| format!("\"{t}\"")).collect::<Vec<_>>().join(", ");
     let toml = format!(
-        "[app]\nid = \"{id}\"\nrepo = \"{repo}\"\nasset = \"{id}-linux-arm64\"\nlanguage = \"go\"\n\n[run]\nport = {port}\npriority = 50\n\n[limits]\nmemory_max_mb = {mem_mb}\ncpu_quota_pct = 50\ntasks_max = 64\n\n[permissions]\npaths_rw = [\"/var/lib/mastermind/{id}\"]\ntools = [{tools}]\n"
+        "[app]\nid = \"{id}\"\nrepo = \"{repo}\"\nasset = \"{asset}\"\nlanguage = \"go\"\n\n[run]\nport = {port}\npriority = 50\n\n[limits]\nmemory_max_mb = {mem_mb}\ncpu_quota_pct = 50\ntasks_max = 64\n\n[permissions]\npaths_rw = [\"/var/lib/mastermind/{id}\"]\ntools = [{tools}]\n"
     );
     Batasan::parse(&toml).map_err(|e| e.to_string())?;
     Ok(toml)
@@ -76,7 +76,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!("Terdeteksi: port={:?} tools={:?}", f.port, f.tools);
     let port: u16 = ask("Port", &f.port.unwrap_or(8080).to_string()).parse().map_err(|_| "port tidak valid")?;
     let mem: u32 = ask("Batas RAM (MB)", "96").parse().map_err(|_| "RAM tidak valid")?;
-    let toml = draft(&repo, &f, port, mem)?;
+    let toml = draft(&repo, &f, port, mem, &format!("{}-linux-arm64", repo.split('/').nth(1).unwrap_or("app").to_lowercase()))?;
     let id = repo.split('/').nth(1).unwrap_or("app").to_lowercase();
     std::fs::write(format!("{id}.batasan.toml"), &toml).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(".github-draft").ok();
@@ -97,7 +97,7 @@ mod tests {
     }
     #[test]
     fn draft_validates_and_jails() {
-        let t = draft("faisalfa123/Senandung", &Findings { tools: vec!["ffmpeg".into()], ..Default::default() }, 8080, 96).unwrap();
+        let t = draft("faisalfa123/Senandung", &Findings { tools: vec!["ffmpeg".into()], ..Default::default() }, 8080, 96, "senandung-linux-arm64").unwrap();
         assert!(t.contains("paths_rw = [\"/var/lib/mastermind/senandung\"]"));
         assert!(t.contains("\"ffmpeg\""));
     }

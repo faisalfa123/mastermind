@@ -441,6 +441,58 @@ function renderCreator() {
 /* ==========================================================================
    SITUS VIEW (Install by Site / Custom GitHub Repo)
    ========================================================================== */
+
+/* SITUS: pencarian terpadu + wizard .batasan.toml */
+function openWizard(repo) {
+  document.getElementById('wiz-modal')?.remove();
+  const ta = h('textarea', { rows: 16, spellcheck: 'false', style: 'width:100%;font-family:inherit' });
+  const pin = h('input', { placeholder: 'SHA256 pin (hanya bila rilis tanpa checksums.txt)', autocomplete: 'off' });
+  const info = h('p', { class: 'dim' }, 'Memuat draf...');
+  const msg = h('p', { class: 'err' });
+  const close = () => modal.remove();
+  const installBtn = h('button', { class: 'good', disabled: true, onclick: async () => {
+    const pv = await api('sites/preview', 'POST', { toml: ta.value });
+    if (!pv.ok) { msg.textContent = 'TOML tidak valid: ' + pv.reason; return; }
+    msg.textContent = '';
+    const term = showInstallTerminal(pv.id, 'INSTALL: ' + pv.id);
+    const r = await sensitive(`INSTALL ${pv.id}?`, code => api('sites/install', 'POST', { repo, toml: ta.value, sha256: pin.value.trim(), totp: code }));
+    if (term) term.finish();
+    if (r) { close(); levelUp('LEVEL UP!'); }
+  } }, 'Install (sandbox)');
+  const checkBtn = h('button', { class: 'ghost', onclick: async () => {
+    const pv = await api('sites/preview', 'POST', { toml: ta.value }).catch(e => ({ ok: false, reason: e.message }));
+    msg.textContent = pv.ok ? '' : 'TOML tidak valid: ' + pv.reason;
+    if (pv.ok) toast('batasan.toml valid: ' + pv.id);
+  } }, 'Validasi');
+  const modal = h('div', { id: 'wiz-modal', class: 'term-modal' }, h('div', { class: 'term-window', style: 'height:auto;max-height:90vh;overflow:auto' },
+    h('div', { class: 'term-header' }, h('span', {}, 'WIZARD BATASAN: ' + repo), h('button', { class: 'ghost', onclick: close }, 'X')),
+    h('div', { class: 'term-body' }, info, ta, pin, msg),
+    h('div', { class: 'term-footer' }, checkBtn, installBtn)));
+  document.body.appendChild(modal);
+  api('sites/wizard', 'POST', { repo }).then(res => {
+    if (!res.ok) { info.textContent = 'Tidak bisa dipasang: ' + res.reason; return; }
+    const d = res.draft; ta.value = d.toml; installBtn.disabled = false;
+    info.textContent = (d.draft ? 'Draf otomatis dari rute instalasi repo. ' : 'Memakai .batasan.toml dari repo. ') + 'Edit port, RAM, folder, tools, lalu Install. ' + (d.has_checksum ? 'Checksum resmi ditemukan.' : 'Tidak ada checksum: tempel SHA256 pin di bawah.');
+  }).catch(e => { info.textContent = e.message; });
+}
+
+async function renderSearch(box) {
+  const q = h('input', { placeholder: 'Cari GitHub / aplikasi sistem (mis. senandung)', autocomplete: 'off' });
+  const out = h('div', { style: 'margin-top:10px' });
+  const go = async () => {
+    out.replaceChildren(h('p', { class: 'loading' }, 'Mencari...'));
+    try {
+      const r = await api('search', 'POST', { q: q.value });
+      out.replaceChildren(r.hits.length ? h('table', {}, r.hits.map(x => h('tr', {},
+        h('td', {}, h('span', { class: 'tag' }, x.source === 'github' ? 'GITHUB' : 'SISTEM')),
+        h('td', {}, x.repo || x.name), h('td', { class: 'dim' }, x.description || x.exec || ''),
+        h('td', {}, x.repo ? h('button', { class: 'good', onclick: () => openWizard(x.repo) }, 'Pasang') : h('span', { class: 'dim' }, x.port ? ':' + x.port : ''))))) : h('p', {}, 'Tidak ada hasil.'));
+    } catch (e) { out.replaceChildren(h('p', { class: 'err' }, e.message)); }
+  };
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  box.append(h('h3', {}, 'CARI APLIKASI'), h('div', { class: 'row' }, q, h('button', { class: 'good', onclick: go }, 'CARI')), out);
+}
+
 async function renderSites() {
   const topBar = await sysbar();
   const card = h('div', { class: 'card' });
@@ -506,7 +558,9 @@ async function renderSites() {
     }
   } catch (_) {}
 
-  view.replaceChildren(...[topBar, card, customSitesBox].filter(Boolean));
+  const searchCard = h('div', { class: 'card', style: 'margin-bottom:16px' });
+  await renderSearch(searchCard);
+  view.replaceChildren(...[topBar, searchCard, card, customSitesBox].filter(Boolean));
 }
 
 /* ==========================================================================

@@ -8,6 +8,7 @@ mod discover;
 mod helper;
 mod installer;
 mod ipc;
+mod localscan;
 mod notify;
 mod scanner;
 mod setup;

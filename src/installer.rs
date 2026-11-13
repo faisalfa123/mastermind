@@ -34,8 +34,11 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
 
     log("[2/5] Memverifikasi SHA256 integrity...");
     // 1. integrity: published checksum must match
-    let curl = e.checksum_url.as_ref().ok_or("release has no checksums file; refusing unverified binary")?;
-    let expected = discover::parse_checksum(&discover::fetch_text(curl)?, &b.app.asset).ok_or("asset not listed in checksums file")?;
+    let expected = match (&e.checksum_url, &e.pin) {
+        (Some(curl), _) => discover::parse_checksum(&discover::fetch_text(curl)?, &b.app.asset).ok_or("asset not listed in checksums file")?,
+        (None, Some(pin)) => { log("[+] Tidak ada checksums.txt; memakai SHA256 pin dari admin"); pin.clone() }
+        (None, None) => return Err("release has no checksums file and no SHA256 pin; refusing unverified binary".into()),
+    };
     if expected != digest {
         st.lock().unwrap().log("system", &format!("CHECKSUM MISMATCH {} {}", e.id, e.version));
         crate::notify::send(cfg, "Checksum mismatch", &format!("{} {}: downloaded binary does not match published checksum", e.id, e.version));

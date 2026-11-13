@@ -21,6 +21,9 @@ pub struct Entry {
     pub batasan_toml: String,
     #[serde(skip)]
     pub batasan: Option<Batasan>,
+    /// User-supplied sha256 pin, used only when the release publishes no checksum file.
+    #[serde(skip)]
+    pub pin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -55,7 +58,7 @@ pub fn build_entry(repo: &str, toml: &str, release: &Value) -> Result<Entry, Str
         id: b.app.id.clone(), repo: repo.into(), version: release["tag_name"].as_str().unwrap_or("?").into(),
         description: b.app.description.clone().unwrap_or_default(), priority: b.run.priority, port: b.run.port,
         memory_max_mb: b.limits.memory_max_mb, cpu_quota_pct: b.limits.cpu_quota_pct, language: b.app.language.clone(),
-        asset_url, checksum_url, batasan_toml: toml.into(), batasan: Some(b),
+        asset_url, checksum_url, batasan_toml: toml.into(), batasan: Some(b), pin: None,
     })
 }
 
@@ -160,4 +163,61 @@ mod tests {
         assert!(parse_repo("owner/repo/extra").is_err());
         assert!(parse_repo("owner/repo;rm -rf /").is_err());
     }
+}
+
+/// Percent-encode a search query (only a safe charset is accepted beforehand).
+fn enc(q: &str) -> String {
+    q.bytes().map(|c| if c.is_ascii_alphanumeric() || b"-_.".contains(&c) { (c as char).to_string() } else { format!("%{c:02X}") }).collect()
+}
+
+pub fn valid_query(q: &str) -> bool {
+    let q = q.trim();
+    !q.is_empty() && q.len() <= 80 && q.chars().all(|c| c.is_ascii_alphanumeric() || " -_./:".contains(c))
+}
+
+/// Public GitHub repository search (read-only; nothing from results is executed).
+pub fn search_github(cfg: &Config, q: &str) -> Result<Vec<Value>, String> {
+    if !valid_query(q) { return Err("kata kunci tidak valid".into()); }
+    let v = get(cfg, &format!("https://api.github.com/search/repositories?q={}&per_page=10", enc(q.trim())))?;
+    Ok(v["items"].as_array().cloned().unwrap_or_default().iter().map(|r| serde_json::json!({
+        "repo": r["full_name"], "description": r["description"], "stars": r["stargazers_count"], "source": "github"
+    })).collect())
+}
+
+/// Wizard draft for a repo: its own `.batasan.toml` if present, else one generated from the legacy install route.
+pub fn wizard_draft(cfg: &Config, repo: &str) -> Result<Value, String> {
+    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest")).map_err(|e| format!("{repo}: belum ada rilis: {e}"))?;
+    let assets: Vec<String> = rel["assets"].as_array().map(|a| a.iter().filter_map(|x| x["name"].as_str().map(String::from)).collect()).unwrap_or_default();
+    let has_checksum = assets.iter().any(|n| n == "checksums.txt" || n == "SHA256SUMS" || n.ends_with(".sha256"));
+    let bin = assets.iter().find(|n| { let l = n.to_lowercase(); (l.contains("arm64") || l.contains("aarch64")) && !l.ends_with(".sha256") && !l.ends_with(".txt") })
+        .ok_or_else(|| format!("{repo}: rilis tidak punya binary arm64/aarch64"))?.clone();
+    if let Ok(e) = inspect_repo(cfg, repo) {
+        return Ok(serde_json::json!({"repo": repo, "version": e.version, "asset": e.batasan.as_ref().map(|b| b.app.asset.clone()), "has_checksum": e.checksum_url.is_some(), "toml": e.batasan_toml, "draft": false}));
+    }
+    let f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
+    let toml = crate::adapt::draft(repo, &f, f.port.unwrap_or(8080), 96, &bin)?;
+    Ok(serde_json::json!({"repo": repo, "version": rel["tag_name"], "asset": bin, "has_checksum": has_checksum, "toml": toml, "draft": true, "tools": f.tools}))
+}
+
+/// Build an installable entry from wizard-edited toml (validated) and the repo's latest release.
+pub fn entry_from_wizard(cfg: &Config, repo: &str, toml: &str, pin: Option<String>) -> Result<Entry, String> {
+    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest")).map_err(|e| e.to_string())?;
+    let mut e = build_entry(repo, toml, &rel)?;
+    e.pin = pin.map(|p| p.trim().to_lowercase()).filter(|p| p.len() == 64 && p.bytes().all(|c| c.is_ascii_hexdigit()));
+    Ok(e)
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    #[test]
+    fn query_validation() {
+        assert!(valid_query("senandung"));
+        assert!(valid_query("faisalfa123/Senandung"));
+        assert!(!valid_query(""));
+        assert!(!valid_query("a&b=1"));
+        assert!(!valid_query(&"a".repeat(81)));
+    }
+    #[test]
+    fn encodes() { assert_eq!(enc("a b/c"), "a%20b%2Fc"); }
 }

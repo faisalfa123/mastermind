@@ -297,6 +297,51 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 let s = app.store.lock().unwrap();
                 json_resp(200, json!({"sites": s.state.sites}))
             }
+            (Method::Post, ["search"]) => {
+                let b = read_json(&mut req);
+                let q = b["q"].as_str().unwrap_or("");
+                let mut hits = match discover::search_github(&app.cfg, q) { Ok(h) => h, Err(e) => return err(400, &e) };
+                let ql = q.trim().to_lowercase();
+                for l in crate::localscan::scan() {
+                    if ql.is_empty() || l["name"].as_str().unwrap_or("").to_lowercase().contains(&ql) { hits.push(l); }
+                }
+                json_resp(200, json!({"hits": hits}))
+            }
+            (Method::Post, ["sites", "wizard"]) => {
+                let b = read_json(&mut req);
+                let repo = match discover::parse_repo(b["repo"].as_str().unwrap_or("")) { Ok(r) => r, Err(e) => return err(400, &e) };
+                match discover::wizard_draft(&app.cfg, &repo) {
+                    Ok(v) => json_resp(200, json!({"ok": true, "draft": v})),
+                    Err(e) => json_resp(200, json!({"ok": false, "reason": e})),
+                }
+            }
+            (Method::Post, ["sites", "preview"]) => {
+                let b = read_json(&mut req);
+                let toml = b["toml"].as_str().unwrap_or("");
+                match crate::batasan::Batasan::parse(toml) {
+                    Ok(x) => json_resp(200, json!({"ok": true, "id": x.app.id})),
+                    Err(e) => json_resp(200, json!({"ok": false, "reason": e.to_string()})),
+                }
+            }
+            (Method::Post, ["sites", "install"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "kode 2FA salah"); }
+                if app.store.lock().unwrap().state.lockdown { return err(423, "lockdown aktif"); }
+                let repo = match discover::parse_repo(b["repo"].as_str().unwrap_or("")) { Ok(r) => r, Err(e) => return err(400, &e) };
+                let pin = b["sha256"].as_str().map(String::from);
+                let e = match discover::entry_from_wizard(&app.cfg, &repo, b["toml"].as_str().unwrap_or(""), pin) { Ok(e) => e, Err(e) => return err(422, &e) };
+                let _g = app.install_lock.lock().unwrap();
+                if app.store.lock().unwrap().state.apps.contains_key(&e.id) { return err(409, "already installed"); }
+                let id = e.id.clone();
+                app.install_logs.lock().unwrap().insert(id.clone(), vec![format!("[*] Memulai instalasi {id}...")]);
+                let (ar, idc) = (app.clone(), id.clone());
+                let logger = move |m: &str| { let mut l = ar.install_logs.lock().unwrap(); if let Some(v) = l.get_mut(&idc) { if v.len() > 500 { v.remove(0); } v.push(m.to_string()); } };
+                match installer::install_with_logger(&app.cfg, &app.store, &e, &logger) {
+                    Ok(m) => { logger(&format!("[SUCCESS] {m}")); json_resp(200, json!({"message": m, "id": id})) }
+                    Err(er) => { logger(&format!("[ERROR] Gagal: {er}")); err(422, &er) }
+                }
+            }
             (Method::Post, ["sites", "inspect"]) => {
                 let b = read_json(&mut req);
                 let input = b["repo"].as_str().unwrap_or("");
