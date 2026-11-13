@@ -1,3 +1,4 @@
+mod adapt;
 mod admin;
 mod audit;
 mod auth;
@@ -20,13 +21,14 @@ fn main() {
         Some("serve") => config::Config::load().and_then(web::serve),
         Some("helper") => config::Config::load().and_then(|c| helper::serve(&c)),
         Some("admin") => admin::run(&args[1..]),
+        Some("adopt") => adapt::run(&args[1..]),
         Some("setup") => setup::run(),
         Some("validate") => validate(args.get(1)),
         Some("notify-test") => config::Config::load().map(|c| {
             let e = notify::send_blocking(&c, "Test", "Mastermind notification test");
             if e.is_empty() { println!("sent"); } else { for x in e { eprintln!("{x}"); } }
         }),
-        _ => { println!("mastermind {}\nusage: mastermind <setup|serve|helper|admin|validate <file>|notify-test>", env!("CARGO_PKG_VERSION")); Ok(()) }
+        _ => { println!("mastermind {}\nusage: mastermind <setup|serve|helper|admin|adopt <owner/repo>|validate <file>|notify-test>", env!("CARGO_PKG_VERSION")); Ok(()) }
     };
     if let Err(e) = res { eprintln!("error: {e}"); std::process::exit(1); }
 }

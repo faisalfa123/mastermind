@@ -53,6 +53,9 @@ pub struct Permissions {
     pub paths_ro: Vec<String>,
     #[serde(default)]
     pub outbound: Vec<String>,
+    /// Whitelisted helper binaries (e.g. yt-dlp); bound read-only into the jail.
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -63,6 +66,7 @@ impl fmt::Display for Error {
 
 const LANGS: [&str; 5] = ["go", "rust", "c", "zig", "nim"];
 const MAX_MEM_MB: u32 = 512;
+pub const TOOLS: [&str; 6] = ["yt-dlp", "ffmpeg", "ffprobe", "git", "curl", "python3"];
 const FORBIDDEN: [&str; 8] = ["/", "/etc", "/root", "/home", "/boot", "/proc", "/sys", "/dev"];
 
 impl Batasan {
@@ -108,8 +112,15 @@ impl Batasan {
             }
         }
         for p in &self.permissions.paths_rw {
-            if !p.starts_with("/var/lib/mastermind/") {
-                return Err(Error(format!("paths_rw must be under /var/lib/mastermind/: {p}")));
+            let jail = format!("/var/lib/mastermind/{id}");
+            let ok = p == &jail || p.strip_prefix(&format!("{jail}/")).is_some_and(|r| !r.is_empty() && !r.contains("//"));
+            if !ok {
+                return Err(Error(format!("paths_rw must stay inside the jail {jail}: {p}")));
+            }
+        }
+        for t in &self.permissions.tools {
+            if !TOOLS.contains(&t.as_str()) {
+                return Err(Error(format!("tool not whitelisted: {t}")));
             }
         }
         Ok(())
@@ -140,6 +151,10 @@ paths_ro = ["/srv/music"]
     #[test] fn bad_lang() { assert!(Batasan::parse(&OK.replace("\"go\"", "\"python\"")).is_err()); }
     #[test] fn bad_path() { assert!(Batasan::parse(&OK.replace("/srv/music", "/etc")).is_err()); }
     #[test] fn bad_rw() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/srv/x")).is_err()); }
+    #[test] fn jail_sibling_rejected() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/other")).is_err()); }
+    #[test] fn jail_prefix_trick_rejected() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/senandung2")).is_err()); }
+    #[test] fn jail_subdir_ok() { assert!(Batasan::parse(&OK.replace("/var/lib/mastermind/senandung", "/var/lib/mastermind/senandung/music")).is_ok()); }
+    #[test] fn bad_tool() { assert!(Batasan::parse(&format!("{OK}tools = [\"bash\"]\n")).is_err()); }
     #[test] fn bad_mem() { assert!(Batasan::parse(&OK.replace("= 96", "= 9000")).is_err()); }
     #[test] fn low_port() { assert!(Batasan::parse(&OK.replace("8080", "80")).is_err()); }
 }

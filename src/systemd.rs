@@ -11,6 +11,17 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     for path in &b.permissions.paths_rw { rw.push_str(&format!("ReadWritePaths={path}\n")); }
     let mut ro = String::new();
     for path in &b.permissions.paths_ro { ro.push_str(&format!("BindReadOnlyPaths={path}\n")); }
+    let jail = format!("/var/lib/mastermind/{id}");
+    let mut sys = String::new();
+    for d in ["/usr/lib", "/lib", "/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"] {
+        sys.push_str(&format!("BindReadOnlyPaths=-{d}\n"));
+    }
+    if let Some(dir) = std::path::Path::new(bin_path).parent() {
+        sys.push_str(&format!("BindReadOnlyPaths={}\n", dir.display()));
+    }
+    for t in &b.permissions.tools {
+        sys.push_str(&format!("BindReadOnlyPaths=-/usr/bin/{t}\n"));
+    }
     let args = b.run.args.join(" ");
     let net = if b.permissions.outbound.is_empty() { "IPAddressDeny=any\nIPAddressAllow=localhost\nIPAddressAllow=link-local\nIPAddressAllow=10.0.0.0/8\nIPAddressAllow=172.16.0.0/12\nIPAddressAllow=192.168.0.0/16\nIPAddressAllow=100.64.0.0/10\n" } else { "" };
     format!(
@@ -37,6 +48,11 @@ OOMScoreAdjust={oom}
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
+TemporaryFileSystem=/:ro
+BindPaths={jail}
+PrivateUsers=yes
+ProtectProc=invisible
+ProcSubset=pid
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
@@ -55,7 +71,7 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 UMask=0077
-{rw}{ro}{net}
+{sys}{rw}{ro}{net}
 [Install]
 WantedBy=multi-user.target
 ",
@@ -75,7 +91,7 @@ mod tests {
     fn unit_is_hardened() {
         let b = Batasan::parse("[app]\nid=\"x\"\nrepo=\"o/x\"\nasset=\"x\"\nlanguage=\"go\"\n[run]\nport=9000\npriority=50\n").unwrap();
         let u = unit(&b, "/opt/mastermind/apps/x/bin/x");
-        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "Nice=10"] {
+        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "TemporaryFileSystem=/:ro", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
             assert!(u.contains(needle), "missing {needle}");
         }
     }
