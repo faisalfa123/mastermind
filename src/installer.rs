@@ -26,6 +26,9 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
     let bl = store::read_blacklist(&cfg.locked_dir);
     if bl.iter().any(|b| b.id == e.id || b.repo.eq_ignore_ascii_case(&e.repo)) { return Err("app is blacklisted (unlock via SSH)".into()); }
     let b = e.batasan.as_ref().ok_or("catalog entry has no parsed rules")?;
+    if b.run.port > 0 && crate::web::port_in_use(b.run.port) {
+        return Err(format!("Port {} sudah digunakan oleh service lain di server ini. Harap hentikan service yang menggunakan port tersebut atau sesuaikan port di .batasan.toml", b.run.port));
+    }
     log(&format!("[1/5] Mengunduh binary {} dari {}...", e.id, e.asset_url));
     let bin = download(&e.asset_url, 96 << 20)?;
     log(&format!("[+] Download selesai ({} bytes)", bin.len()));

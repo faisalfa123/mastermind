@@ -19,7 +19,18 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     for t in &b.permissions.tools {
         sys.push_str(&format!("BindReadOnlyPaths=-/usr/bin/{t}\n"));
     }
-    let args = b.run.args.join(" ");
+    let mut full_args = Vec::new();
+    if !b.run.args.iter().any(|a| a.starts_with("-port") || a.starts_with("--port")) {
+        full_args.push(format!("-port {}", b.run.port));
+    }
+    for a in &b.run.args {
+        full_args.push(a.clone());
+    }
+    let exec_cmd = if full_args.is_empty() {
+        bin_path.to_string()
+    } else {
+        format!("{bin_path} {}", full_args.join(" "))
+    };
     let net = if b.permissions.outbound.is_empty() { "IPAddressDeny=any\nIPAddressAllow=localhost\nIPAddressAllow=link-local\nIPAddressAllow=10.0.0.0/8\nIPAddressAllow=172.16.0.0/12\nIPAddressAllow=192.168.0.0/16\nIPAddressAllow=100.64.0.0/10\n" } else { "" };
     let app_dir = std::path::Path::new(bin_path).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| jail.clone());
     format!(
@@ -28,7 +39,7 @@ Description=Mastermind app: {id} ({repo})
 After=network.target
 
 [Service]
-ExecStart={bin_path} {args}
+ExecStart={exec_cmd}
 Environment=PORT={port}
 DynamicUser=yes
 StateDirectory=mastermind/{id}

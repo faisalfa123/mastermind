@@ -164,7 +164,7 @@ fn system_info(app: &App) -> Value {
 }
 
 
-fn port_in_use(port: u16) -> bool {
+pub(crate) fn port_in_use(port: u16) -> bool {
     if port == 0 { return false; }
     let hex_port = format!(":{port:04X}");
     for p in ["/proc/net/tcp", "/proc/net/tcp6"] {
