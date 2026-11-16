@@ -129,7 +129,7 @@ impl App {
         {
             let s = self.store.lock().unwrap();
             for site in &s.state.sites {
-                if !cfg.extra_repos.contains(site) {
+                if !cfg.extra_repos.iter().any(|r| r.eq_ignore_ascii_case(site)) {
                     cfg.extra_repos.push(site.clone());
                 }
             }
@@ -175,16 +175,17 @@ fn apps_json(app: &App, force: bool) -> Value {
     for e in &entries {
         let inst = st.apps.get(&e.id);
         let status = inst.map(|_| ipc::call(&app.cfg.helper_socket, &format!("status {}", e.id)).unwrap_or_else(|_| "unknown".into()));
+        let verified = inst.map(|i| i.verified).unwrap_or_else(|| e.checksum_url.is_some());
         out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": e.priority, "port": e.port,
             "memory_max_mb": e.memory_max_mb, "cpu_quota_pct": e.cpu_quota_pct, "language": e.language,
-            "installed": inst, "status": status, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
+            "installed": inst, "status": status, "verified": verified, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
             "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id))}));
     }
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
         out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(tidak ada di katalog)", "priority": i.priority, "port": 0,
-            "memory_max_mb": 0, "cpu_quota_pct": 0, "language": "?", "installed": i, "status": status, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
+            "memory_max_mb": 0, "cpu_quota_pct": 0, "language": "?", "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
     }
     json!({"apps": out, "unconfigured": bad, "lockdown": st.lockdown})
 }
@@ -197,9 +198,9 @@ fn handle(app: &Arc<App>, mut req: Request) {
     // Static PWA assets (public: they contain no secrets)
     if method == Method::Get && !url.starts_with("/api/") {
         let r = match url.as_str() {
-            "/" | "/index.html" => Some(asset(include_bytes!("../web/index.html"), "text/html; charset=utf-8")),
-            "/style.css" => Some(asset(include_bytes!("../web/style.css"), "text/css; charset=utf-8")),
-            "/app.js" => Some(asset(include_bytes!("../web/app.js"), "text/javascript; charset=utf-8")),
+            "/" | "/index.html" => Some(secure(Response::from_data(include_bytes!("../web/index.html").to_vec()).with_header(hdr("Content-Type", "text/html; charset=utf-8")), "no-cache")),
+            "/style.css" => Some(secure(Response::from_data(include_bytes!("../web/style.css").to_vec()).with_header(hdr("Content-Type", "text/css; charset=utf-8")), "no-cache")),
+            "/app.js" => Some(secure(Response::from_data(include_bytes!("../web/app.js").to_vec()).with_header(hdr("Content-Type", "text/javascript; charset=utf-8")), "no-cache")),
             "/scene.js" => Some(asset(include_bytes!("../web/scene.js"), "text/javascript; charset=utf-8")),
             "/sw.js" => Some(asset(include_bytes!("../web/sw.js"), "text/javascript; charset=utf-8")),
             "/manifest.webmanifest" => Some(asset(include_bytes!("../web/manifest.webmanifest"), "application/manifest+json")),
@@ -293,6 +294,15 @@ fn handle(app: &Arc<App>, mut req: Request) {
             (Method::Post, ["refresh"]) => json_resp(200, apps_json(app, true)),
             (Method::Get, ["system"]) => json_resp(200, system_info(app)),
             (Method::Get, ["blacklist"]) => json_resp(200, json!({"items": store::read_blacklist(&app.cfg.locked_dir)})),
+            (Method::Post, ["verify-2fa"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if app.two_factor_peek(tf_code).is_some() {
+                    json_resp(200, json!({"ok": true}))
+                } else {
+                    err(403, "kode / jawaban 2FA salah")
+                }
+            }
             (Method::Get, ["sites"]) => {
                 let s = app.store.lock().unwrap();
                 json_resp(200, json!({"sites": s.state.sites}))
@@ -365,7 +375,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 };
                 {
                     let mut s = app.store.lock().unwrap();
-                    if !s.state.sites.contains(&repo) {
+                    if !s.state.sites.iter().any(|r| r.eq_ignore_ascii_case(&repo)) {
                         s.state.sites.push(repo.clone());
                         s.log("admin", &format!("site-add {repo}"));
                         s.save().ok();
@@ -385,7 +395,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 };
                 {
                     let mut s = app.store.lock().unwrap();
-                    s.state.sites.retain(|r| r != &repo);
+                    s.state.sites.retain(|r| !r.eq_ignore_ascii_case(&repo));
                     s.log("admin", &format!("site-remove {repo}"));
                     s.save().ok();
                 }
@@ -434,7 +444,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         let installed = app.store.lock().unwrap().state.apps.contains_key(*id);
                         if *action == "update" && !installed { return err(404, "not installed"); }
                         if *action == "install" && installed { return err(409, "already installed"); }
-                        let (entries, _) = app.catalog(false);
+                        let (mut entries, _) = app.catalog(false);
+                        if !entries.iter().any(|e| e.id == *id) {
+                            let (fresh, _) = app.catalog(true);
+                            entries = fresh;
+                        }
                         let Some(e) = entries.iter().find(|e| e.id == *id) else { return err(404, "not in catalog") };
                         let app_id = id.to_string();
                         {

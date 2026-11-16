@@ -50,9 +50,12 @@ pub struct Installed {
     pub priority: u8,
     #[serde(default)]
     pub repo: String,
+    #[serde(default = "d_true")]
+    pub verified: bool,
 }
 
 fn d_prio() -> u8 { 50 }
+fn d_true() -> bool { true }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct State {

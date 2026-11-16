@@ -1,5 +1,5 @@
 // Service worker: cache the app shell only. API responses are never cached here.
-const V = 'mm-v1';
+const V = 'mm-v2';
 const SHELL = ['/', '/style.css', '/app.js', '/pixel.ttf', '/manifest.webmanifest', '/icon-192.png', '/favicon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {

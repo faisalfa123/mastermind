@@ -33,20 +33,41 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
     if bl.iter().any(|x| x.sha256 == digest) { return Err("binary hash is blacklisted".into()); }
 
     log("[2/5] Memverifikasi SHA256 integrity...");
-    // 1. integrity: published checksum must match
-    let expected = match (&e.checksum_url, &e.pin) {
-        (Some(curl), _) => discover::parse_checksum(&discover::fetch_text(curl)?, &b.app.asset).ok_or("asset not listed in checksums file")?,
-        (None, Some(pin)) => { log("[+] Tidak ada checksums.txt; memakai SHA256 pin dari admin"); pin.clone() }
-        (None, None) => return Err("release has no checksums file and no SHA256 pin; refusing unverified binary".into()),
-    };
-    if expected != digest {
-        st.lock().unwrap().log("system", &format!("CHECKSUM MISMATCH {} {}", e.id, e.version));
-        crate::notify::send(cfg, "Checksum mismatch", &format!("{} {}: downloaded binary does not match published checksum", e.id, e.version));
-        return Err("checksum mismatch".into());
+    // 1. integrity: published checksum or pin if available; otherwise install as unverified (with yellow warning)
+    let mut verified = true;
+    match (&e.checksum_url, &e.pin) {
+        (Some(curl), _) => {
+            if let Ok(text) = discover::fetch_text(curl) {
+                if let Some(expected) = discover::parse_checksum(&text, &b.app.asset) {
+                    if expected != digest {
+                        st.lock().unwrap().log("system", &format!("CHECKSUM MISMATCH {} {}", e.id, e.version));
+                        crate::notify::send(cfg, "Checksum mismatch", &format!("{} {}: downloaded binary does not match published checksum", e.id, e.version));
+                        return Err("checksum mismatch".into());
+                    }
+                    log(&format!("[+] Checksum resmi valid (sha256: {})", &digest[..16]));
+                } else {
+                    verified = false;
+                    log(&format!("[!] Peringatan: aset {} tidak terdaftar di checksums.txt (lanjut tanpa verifikasi SHA256, hash: {})", b.app.asset, &digest[..16]));
+                }
+            } else {
+                verified = false;
+                log(&format!("[!] Peringatan: gagal mengambil checksums.txt (lanjut tanpa verifikasi SHA256, hash: {})", &digest[..16]));
+            }
+        }
+        (None, Some(pin)) if !pin.is_empty() => {
+            if *pin != digest {
+                st.lock().unwrap().log("system", &format!("PIN MISMATCH {} {}", e.id, e.version));
+                return Err("SHA256 pin mismatch".into());
+            }
+            log(&format!("[+] SHA256 pin admin cocok (sha256: {})", &digest[..16]));
+        }
+        _ => {
+            verified = false;
+            log(&format!("[!] PERINGATAN KUNING: Tidak ada verifikasi SHA256 / checksums.txt (hash: {}). Melanjutkan instalasi dengan tanda peringatan.", &digest[..16]));
+        }
     }
 
     // 2. static scan (+ optional VirusTotal)
-    log(&format!("[+] Checksum valid (sha256: {})", &digest[..16]));
     log("[3/5] Memindai biner terhadap ancaman malware / skrip berbahaya...");
     let mut verdict = scanner::scan(&bin);
     if let Some(k) = &cfg.virustotal_key {
@@ -79,7 +100,10 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
     match ipc::call(&cfg.helper_socket, &format!("install {}", e.id)) {
         Ok(h) => {
             let mut g = st.lock().unwrap();
-            g.state.apps.insert(e.id.clone(), Installed { version: e.version.clone(), sha256: h, installed_at: store::now(), priority: b.run.priority, repo: e.repo.clone() });
+            if !verified {
+                verdict.warnings.push("tidak memiliki verifikasi SHA256 (unverified)".into());
+            }
+            g.state.apps.insert(e.id.clone(), Installed { version: e.version.clone(), sha256: h, installed_at: store::now(), priority: b.run.priority, repo: e.repo.clone(), verified });
             g.log("admin", &format!("installed {} {}", e.id, e.version));
             g.save().ok();
             Ok(if verdict.warnings.is_empty() { "installed".into() } else { format!("installed with warnings: {}", verdict.warnings.join("; ")) })

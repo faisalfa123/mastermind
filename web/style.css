@@ -439,3 +439,16 @@ dialog input{margin-top:10px}
   padding: 8px 12px; border-top: 1px solid var(--border);
   display: flex; justify-content: flex-end; background: var(--bg-head, rgba(0,0,0,0.1));
 }
+
+/* Yellow Unverified & Green Verified Badges */
+.tag.warn-badge {
+  background: rgba(255, 193, 7, 0.18);
+  color: #ffd54f;
+  border: 1px solid #ffb300;
+  font-weight: bold;
+}
+.tag.ok-badge {
+  background: rgba(90, 247, 142, 0.14);
+  color: #5af78e;
+  border: 1px solid rgba(90, 247, 142, 0.45);
+}

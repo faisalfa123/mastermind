@@ -48,14 +48,27 @@ pub fn build_entry(repo: &str, toml: &str, release: &Value) -> Result<Entry, Str
     if !b.app.repo.eq_ignore_ascii_case(repo) {
         return Err(format!("batasan repo '{}' does not match {repo}", b.app.repo));
     }
-    let prefix = format!("https://github.com/{repo}/releases/download/");
-    let assets = release["assets"].as_array().ok_or("release has no assets")?;
+    let prefix_rel = format!("https://github.com/{repo}/releases/download/").to_lowercase();
+    let prefix_raw = format!("https://raw.githubusercontent.com/{repo}/").to_lowercase();
+    let allowed_url = |u: &str| {
+        let l = u.to_lowercase();
+        l.starts_with(&prefix_rel) || l.starts_with(&prefix_raw)
+    };
+    let empty_vec = Vec::new();
+    let assets = release["assets"].as_array().unwrap_or(&empty_vec);
     let find = |name: &str| assets.iter().find(|a| a["name"].as_str() == Some(name)).and_then(|a| a["browser_download_url"].as_str())
-        .filter(|u| u.to_lowercase().starts_with(&prefix.to_lowercase())).map(String::from);
-    let asset_url = find(&b.app.asset).ok_or_else(|| format!("release has no asset {}", b.app.asset))?;
+        .filter(|u| allowed_url(u)).map(String::from);
+    // Also fallback to any arm64/aarch64 binary asset in release if exact name differs
+    let find_arm64 = || assets.iter().find(|a| {
+        let n = a["name"].as_str().unwrap_or("").to_lowercase();
+        (n.contains("arm64") || n.contains("aarch64")) && !n.ends_with(".sha256") && !n.ends_with(".txt")
+    }).and_then(|a| a["browser_download_url"].as_str()).filter(|u| allowed_url(u)).map(String::from);
+    let fallback_raw = release["fallback_asset_url"].as_str().filter(|u| allowed_url(u)).map(String::from);
+    let asset_url = find(&b.app.asset).or_else(find_arm64).or(fallback_raw)
+        .ok_or_else(|| format!("release has no asset {}", b.app.asset))?;
     let checksum_url = find("checksums.txt").or_else(|| find("SHA256SUMS")).or_else(|| find(&format!("{}.sha256", b.app.asset)));
     Ok(Entry {
-        id: b.app.id.clone(), repo: repo.into(), version: release["tag_name"].as_str().unwrap_or("?").into(),
+        id: b.app.id.clone(), repo: repo.into(), version: release["tag_name"].as_str().unwrap_or("main").into(),
         description: b.app.description.clone().unwrap_or_default(), priority: b.run.priority, port: b.run.port,
         memory_max_mb: b.limits.memory_max_mb, cpu_quota_pct: b.limits.cpu_quota_pct, language: b.app.language.clone(),
         asset_url, checksum_url, batasan_toml: toml.into(), batasan: Some(b), pin: None,
@@ -68,7 +81,10 @@ pub fn parse_checksum(text: &str, asset: &str) -> Option<String> {
         let mut it = l.split_whitespace();
         let (h, n) = (it.next()?, it.next());
         let valid = h.len() == 64 && h.bytes().all(|c| c.is_ascii_hexdigit());
-        if valid && n.map(|n| n.trim_start_matches('*').trim_start_matches("./") == asset).unwrap_or(true) { return Some(h.to_lowercase()); }
+        if valid && n.map(|n| {
+            let clean = n.trim_start_matches('*').trim_start_matches("./");
+            clean == asset || (clean.contains("arm64") && asset.contains("aarch64")) || (clean.contains("aarch64") && asset.contains("arm64"))
+        }).unwrap_or(true) { return Some(h.to_lowercase()); }
     }
     None
 }
@@ -92,16 +108,78 @@ pub fn parse_repo(input: &str) -> Result<String, String> {
     Ok(format!("{owner}/{repo}"))
 }
 
-/// Inspect a single repository for .batasan.toml and arm64 release asset
+fn is_arm64_bin_name(name: &str) -> bool {
+    let l = name.to_lowercase();
+    (l.contains("arm64") || l.contains("aarch64"))
+        && !l.ends_with(".sha256")
+        && !l.ends_with(".txt")
+        && !l.ends_with(".md")
+        && !l.ends_with(".toml")
+        && !l.ends_with(".sh")
+}
+
+/// Searches latest release or repository `bin/` / root for an arm64 binary asset.
+fn resolve_release_or_repo_bin(cfg: &Config, repo: &str, root_list: Option<&Vec<Value>>) -> Result<(Value, String, bool), String> {
+    let mut rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest"))
+        .unwrap_or_else(|_| serde_json::json!({"tag_name": "main", "assets": []}));
+    let assets: Vec<String> = rel["assets"].as_array()
+        .map(|a| a.iter().filter_map(|x| x["name"].as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let has_checksum = assets.iter().any(|n| n == "checksums.txt" || n == "SHA256SUMS" || n.ends_with(".sha256"));
+    if let Some(bin) = assets.iter().find(|n| is_arm64_bin_name(n)) {
+        return Ok((rel, bin.clone(), has_checksum));
+    }
+    // Fallback 1: check root directory contents for arm64 binary
+    let owned_root;
+    let rlist = match root_list {
+        Some(l) => l,
+        None => {
+            owned_root = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/"))
+                .ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
+            &owned_root
+        }
+    };
+    if let Some(f) = rlist.iter().find(|f| f["name"].as_str().map(is_arm64_bin_name).unwrap_or(false)) {
+        let name = f["name"].as_str().unwrap_or("app-linux-arm64").to_string();
+        let dl = f["download_url"].as_str()
+            .map(String::from)
+            .unwrap_or_else(|| format!("https://raw.githubusercontent.com/{repo}/HEAD/{name}"));
+        rel["fallback_asset_url"] = Value::String(dl);
+        return Ok((rel, name, false));
+    }
+    // Fallback 2: check bin/ directory in repo
+    if let Ok(Value::Array(blist)) = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/bin")) {
+        if let Some(f) = blist.iter().find(|f| f["name"].as_str().map(is_arm64_bin_name).unwrap_or(false)) {
+            let name = f["name"].as_str().unwrap_or("app-linux-arm64").to_string();
+            let dl = f["download_url"].as_str()
+                .map(String::from)
+                .unwrap_or_else(|| format!("https://raw.githubusercontent.com/{repo}/HEAD/bin/{name}"));
+            rel["fallback_asset_url"] = Value::String(dl);
+            return Ok((rel, name, false));
+        }
+    }
+    Err(format!("{repo}: tidak ditemukan binary arm64/aarch64 di GitHub Release maupun folder repo"))
+}
+
+/// Inspect a single repository for .batasan.toml (or auto-draft) and arm64 binary asset
 pub fn inspect_repo(cfg: &Config, repo: &str) -> Result<Entry, String> {
-    let list = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/"))?;
-    let file = list.as_array().and_then(|a| a.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)))
-        .ok_or_else(|| format!("{repo}: tidak ditemukan file *.batasan.toml di root repo"))?;
-    let url = file["download_url"].as_str().ok_or("tidak ada download_url untuk *.batasan.toml")?;
-    let t = get_text(url)?;
-    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest"))
-        .map_err(|e| format!("{repo}: belum ada rilis terbaru (GitHub release): {e}"))?;
-    build_entry(repo, &t, &rel)
+    let list_val = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/"))?;
+    let list = list_val.as_array().ok_or("respon contents GitHub bukan array")?;
+    let (rel, bin_name, _) = resolve_release_or_repo_bin(cfg, repo, Some(list))?;
+
+    if let Some(file) = list.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)) {
+        if let Some(url) = file["download_url"].as_str() {
+            if let Ok(t) = get_text(url) {
+                if let Ok(e) = build_entry(repo, &t, &rel) {
+                    return Ok(e);
+                }
+            }
+        }
+    }
+    // Auto-draft batasan.toml when repo does not have one yet
+    let f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
+    let toml = crate::adapt::draft(repo, &f, f.port.unwrap_or(8080), 96, &bin_name)?;
+    build_entry(repo, &toml, &rel)
 }
 
 pub fn discover(cfg: &Config) -> (Vec<Entry>, Vec<Unconfigured>) {
@@ -112,9 +190,15 @@ pub fn discover(cfg: &Config) -> (Vec<Entry>, Vec<Unconfigured>) {
         Ok(_) => {}
         Err(e) => bad.push(Unconfigured { repo: cfg.github_owner.clone(), reason: format!("discovery failed: {e}") }),
     }
-    repos.extend(cfg.extra_repos.iter().cloned());
-    repos.dedup();
+    for extra in &cfg.extra_repos {
+        if !repos.iter().any(|r| r.eq_ignore_ascii_case(extra)) {
+            repos.push(extra.clone());
+        }
+    }
     for repo in repos {
+        if repo.split('/').nth(1).map(|n| n.eq_ignore_ascii_case("mastermind")).unwrap_or(false) {
+            continue;
+        }
         match inspect_repo(cfg, &repo) {
             Ok(e) => ok.push(e),
             Err(e) => bad.push(Unconfigured { repo, reason: e }),
@@ -131,6 +215,19 @@ mod tests {
         serde_json::json!({"tag_name":"v1.2.0","assets":[
             {"name":"senandung-linux-arm64","browser_download_url":url},
             {"name":"checksums.txt","browser_download_url":"https://github.com/faisalfa123/Senandung/releases/download/v1.2.0/checksums.txt"}]})
+    }
+    #[test]
+    fn builds_with_fallback_repo_bin() {
+        let rel = serde_json::json!({
+            "tag_name": "main",
+            "assets": [],
+            "fallback_asset_url": "https://raw.githubusercontent.com/faisalfa123/kompic/HEAD/kompic-linux-arm64"
+        });
+        let toml = "[app]\nid=\"kompic\"\nrepo=\"faisalfa123/kompic\"\nasset=\"kompic-linux-arm64\"\nlanguage=\"go\"\n[run]\nport=8080\npriority=50\n";
+        let e = build_entry("faisalfa123/kompic", toml, &rel).unwrap();
+        assert_eq!(e.id, "kompic");
+        assert!(e.checksum_url.is_none());
+        assert_eq!(e.asset_url, "https://raw.githubusercontent.com/faisalfa123/kompic/HEAD/kompic-linux-arm64");
     }
     #[test]
     fn builds() {
@@ -186,22 +283,28 @@ pub fn search_github(cfg: &Config, q: &str) -> Result<Vec<Value>, String> {
 
 /// Wizard draft for a repo: its own `.batasan.toml` if present, else one generated from the legacy install route.
 pub fn wizard_draft(cfg: &Config, repo: &str) -> Result<Value, String> {
-    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest")).map_err(|e| format!("{repo}: belum ada rilis: {e}"))?;
-    let assets: Vec<String> = rel["assets"].as_array().map(|a| a.iter().filter_map(|x| x["name"].as_str().map(String::from)).collect()).unwrap_or_default();
-    let has_checksum = assets.iter().any(|n| n == "checksums.txt" || n == "SHA256SUMS" || n.ends_with(".sha256"));
-    let bin = assets.iter().find(|n| { let l = n.to_lowercase(); (l.contains("arm64") || l.contains("aarch64")) && !l.ends_with(".sha256") && !l.ends_with(".txt") })
-        .ok_or_else(|| format!("{repo}: rilis tidak punya binary arm64/aarch64"))?.clone();
-    if let Ok(e) = inspect_repo(cfg, repo) {
-        return Ok(serde_json::json!({"repo": repo, "version": e.version, "asset": e.batasan.as_ref().map(|b| b.app.asset.clone()), "has_checksum": e.checksum_url.is_some(), "toml": e.batasan_toml, "draft": false}));
+    let list_val = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/")).ok();
+    let list = list_val.as_ref().and_then(|v| v.as_array());
+    let (rel, bin, has_checksum) = resolve_release_or_repo_bin(cfg, repo, list)?;
+    if let Some(l) = list {
+        if let Some(file) = l.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)) {
+            if let Some(url) = file["download_url"].as_str() {
+                if let Ok(t) = get_text(url) {
+                    if let Ok(e) = build_entry(repo, &t, &rel) {
+                        return Ok(serde_json::json!({"repo": repo, "version": e.version, "asset": e.batasan.as_ref().map(|b| b.app.asset.clone()), "has_checksum": e.checksum_url.is_some(), "toml": e.batasan_toml, "draft": false}));
+                    }
+                }
+            }
+        }
     }
     let f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
     let toml = crate::adapt::draft(repo, &f, f.port.unwrap_or(8080), 96, &bin)?;
-    Ok(serde_json::json!({"repo": repo, "version": rel["tag_name"], "asset": bin, "has_checksum": has_checksum, "toml": toml, "draft": true, "tools": f.tools}))
+    Ok(serde_json::json!({"repo": repo, "version": rel["tag_name"].as_str().unwrap_or("main"), "asset": bin, "has_checksum": has_checksum, "toml": toml, "draft": true, "tools": f.tools}))
 }
 
-/// Build an installable entry from wizard-edited toml (validated) and the repo's latest release.
+/// Build an installable entry from wizard-edited toml (validated) and the repo's latest release or repo bin fallback.
 pub fn entry_from_wizard(cfg: &Config, repo: &str, toml: &str, pin: Option<String>) -> Result<Entry, String> {
-    let rel = get(cfg, &format!("https://api.github.com/repos/{repo}/releases/latest")).map_err(|e| e.to_string())?;
+    let (rel, _, _) = resolve_release_or_repo_bin(cfg, repo, None)?;
     let mut e = build_entry(repo, toml, &rel)?;
     e.pin = pin.map(|p| p.trim().to_lowercase()).filter(|p| p.len() == 64 && p.bytes().all(|c| c.is_ascii_hexdigit()));
     Ok(e)

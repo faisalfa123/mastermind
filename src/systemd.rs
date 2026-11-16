@@ -34,6 +34,7 @@ ExecStart={bin_path} {args}
 Environment=PORT={port}
 DynamicUser=yes
 StateDirectory=mastermind/{id}
+WorkingDirectory={jail}
 Restart=always
 RestartSec=3
 StartLimitIntervalSec=60s

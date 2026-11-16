@@ -53,10 +53,19 @@ function showInstallTerminal(appId, title) {
   }, 600);
 
   return {
-    finish: () => {
+    finish: (errMsg) => {
+      clearInterval(timer);
+      if (errMsg) {
+        body.appendChild(h('div', { class: 'term-line error' }, `[ERROR] ${errMsg}`));
+        body.scrollTop = body.scrollHeight;
+      }
       closeBtn.disabled = false;
       closeBtn.classList.remove('ghost');
-      closeBtn.classList.add('good');
+      closeBtn.classList.add(errMsg ? 'danger' : 'good');
+    },
+    close: () => {
+      clearInterval(timer);
+      modal.remove();
     }
   };
 }
@@ -276,9 +285,27 @@ async function sysbar() {
   } catch (_) { return null; }
 }
 
-async function sensitive(msg, fn) {
-  const code = await ask(msg, true); if (!code) return;
-  try { const r = await fn(code); toast(r && r.message || 'OK'); return r; } catch (e) { toast('GAGAL: ' + e.message); }
+async function sensitive(msg, fn, onVerified) {
+  const code = await ask(msg, true);
+  if (!code) return null;
+  try {
+    await api('verify-2fa', 'POST', { totp: code });
+  } catch (e) {
+    toast('2FA DITOLAK: ' + e.message.toUpperCase());
+    return null;
+  }
+  let ctx = null;
+  if (onVerified) ctx = onVerified();
+  try {
+    const r = await fn(code);
+    if (ctx && ctx.finish) ctx.finish();
+    toast((r && r.message) || 'OK');
+    return r;
+  } catch (e) {
+    if (ctx && ctx.finish) ctx.finish(e.message);
+    toast('GAGAL: ' + e.message);
+    return null;
+  }
 }
 
 function appCard(a) {
@@ -286,20 +313,26 @@ function appCard(a) {
   const act = (name, label, cls) => h('button', { class: cls || '', onclick: async () => {
     const needs = ['install', 'update', 'remove'].includes(name);
     const run = async code => api(`apps/${a.id}/${name}`, 'POST', { totp: code });
-    let term = null;
-    if (name === 'install' || name === 'update') {
-      term = showInstallTerminal(a.id, `${name.toUpperCase()}: ${a.id}`);
-    }
-    const r = needs ? await sensitive(`${label.toUpperCase()} ${a.id}?`, run) : await run().then(x => (toast('OK'), x)).catch(e => toast('GAGAL: ' + e.message));
-    if (term) term.finish();
+    const onVer = (name === 'install' || name === 'update')
+      ? () => showInstallTerminal(a.id, `${name.toUpperCase()}: ${a.id}`)
+      : null;
+    const r = needs
+      ? await sensitive(`${label.toUpperCase()} ${a.id}?`, run, onVer)
+      : await run().then(x => (toast('OK'), x)).catch(e => (toast('GAGAL: ' + e.message), null));
     if (r && (name === 'install' || name === 'update')) levelUp(name === 'install' ? 'LEVEL UP!' : 'UPGRADED!');
     render();
   } }, label);
+
+  const isUnverified = a.verified === false || (inst && inst.verified === false);
+  const warnBadge = isUnverified
+    ? h('span', { class: 'tag warn-badge', title: 'Diinstal / tersedia tanpa verifikasi SHA256 checksums.txt' }, '⚠ TANPA SHA256 (UNVERIFIED)')
+    : h('span', { class: 'tag ok-badge', title: 'Terverifikasi SHA256 Checksum' }, '✔ SHA256 VERIFIED');
 
   const kids = [
     h('h3', {}, a.id),
     h('p', {}, a.description || a.repo),
     h('p', {},
+      warnBadge,
       h('span', { class: 'tag' }, 'PRIO ' + a.priority),
       h('span', { class: 'tag' }, ':' + a.port),
       h('span', { class: 'tag' }, a.language.toUpperCase()),
@@ -454,10 +487,12 @@ function openWizard(repo) {
     const pv = await api('sites/preview', 'POST', { toml: ta.value });
     if (!pv.ok) { msg.textContent = 'TOML tidak valid: ' + pv.reason; return; }
     msg.textContent = '';
-    const term = showInstallTerminal(pv.id, 'INSTALL: ' + pv.id);
-    const r = await sensitive(`INSTALL ${pv.id}?`, code => api('sites/install', 'POST', { repo, toml: ta.value, sha256: pin.value.trim(), totp: code }));
-    if (term) term.finish();
-    if (r) { close(); levelUp('LEVEL UP!'); }
+    const r = await sensitive(
+      `INSTALL ${pv.id}?`,
+      code => api('sites/install', 'POST', { repo, toml: ta.value, sha256: pin.value.trim(), totp: code }),
+      () => showInstallTerminal(pv.id, 'INSTALL: ' + pv.id)
+    );
+    if (r) { close(); levelUp('LEVEL UP!'); render(); }
   } }, 'Install (sandbox)');
   const checkBtn = h('button', { class: 'ghost', onclick: async () => {
     const pv = await api('sites/preview', 'POST', { toml: ta.value }).catch(e => ({ ok: false, reason: e.message }));
@@ -472,7 +507,7 @@ function openWizard(repo) {
   api('sites/wizard', 'POST', { repo }).then(res => {
     if (!res.ok) { info.textContent = 'Tidak bisa dipasang: ' + res.reason; return; }
     const d = res.draft; ta.value = d.toml; installBtn.disabled = false;
-    info.textContent = (d.draft ? 'Draf otomatis dari rute instalasi repo. ' : 'Memakai .batasan.toml dari repo. ') + 'Edit port, RAM, folder, tools, lalu Install. ' + (d.has_checksum ? 'Checksum resmi ditemukan.' : 'Tidak ada checksum: tempel SHA256 pin di bawah.');
+    info.textContent = (d.draft ? 'Draf otomatis dari rute instalasi repo. ' : 'Memakai .batasan.toml dari repo. ') + 'Edit port, RAM, folder, tools, lalu Install. ' + (d.has_checksum ? '✔ Checksum SHA256 resmi ditemukan.' : '⚠ Tidak ada checksums.txt: Anda tetap bisa langsung Install (akan diberi tanda peringatan kuning di Manager) atau tempel SHA256 pin opsional di bawah.');
   }).catch(e => { info.textContent = e.message; });
 }
 
@@ -513,12 +548,14 @@ async function renderSites() {
         return;
       }
       const e = res.entry;
-      const addAndInstallBtn = h('button', { class: 'good', onclick: async () => {
-        await sensitive(`TAMBAHKAN SITUS ${e.repo}?`, code => api('sites/add', 'POST', { repo: e.repo, totp: code }));
+      const addAndInstallBtn = h('button', { class: 'ghost', onclick: async () => {
+        const ok = await sensitive(`TAMBAHKAN SITUS ${e.repo}?`, code => api('sites/add', 'POST', { repo: e.repo, totp: code }));
+        if (!ok) return;
         toast('Situs ditambahkan ke katalog!');
         tab = 'catalog';
         render();
       } }, 'TAMBAHKAN KE KATALOG');
+      const directInstallBtn = h('button', { class: 'good', onclick: () => openWizard(e.repo) }, 'ATUR BATASAN & INSTALL LANGSUNG');
 
       resultBox.replaceChildren(h('div', { class: 'card' },
         h('h3', {}, `${e.id} (${e.version})`),
@@ -527,7 +564,7 @@ async function renderSites() {
           h('span', { class: 'tag' }, `PORT :${e.port}`),
           h('span', { class: 'tag' }, e.language.toUpperCase()),
           h('span', { class: 'tag' }, `${e.memory_max_mb}MB / ${e.cpu_quota_pct}% CPU`)),
-        h('div', { class: 'row' }, addAndInstallBtn)));
+        h('div', { class: 'row' }, directInstallBtn, addAndInstallBtn)));
     } catch (err) {
       resultBox.replaceChildren(h('p', { class: 'err' }, err.message.toUpperCase()));
     }
@@ -552,8 +589,8 @@ async function renderSites() {
           s.sites.map(r => h('tr', {},
             h('td', {}, r),
             h('td', {}, h('button', { class: 'danger', onclick: async () => {
-              await sensitive(`HAPUS SITUS ${r}?`, code => api('sites/remove', 'POST', { repo: r, totp: code }));
-              render();
+              const ok = await sensitive(`HAPUS SITUS ${r}?`, code => api('sites/remove', 'POST', { repo: r, totp: code }));
+              if (ok) render();
             } }, 'Hapus'))))));
     }
   } catch (_) {}
@@ -595,7 +632,7 @@ async function render() {
       out.push(list.length ? h('div', { class: 'grid' }, list.map(appCard)) : h('p', { class: 'loading' }, tab === 'apps' ? 'Belum ada aplikasi.' : 'Tidak ada yang baru.'));
       if (tab === 'catalog') {
         out.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: async () => { toast('Memindai GitHub...'); await api('refresh', 'POST').catch(e => toast(e.message)); render(); } }, 'Pindai ulang')));
-        if (d.unconfigured.length) out.push(h('h2', {}, 'BELUM SIAP (TANPA .batasan.toml)'), h('table', {}, d.unconfigured.map(u => h('tr', {}, h('td', {}, u.repo), h('td', {}, u.reason)))));
+        if (d.unconfigured.length) out.push(h('h2', {}, 'REPO LAINNYA (TANPA BINARY ARM64)'), h('table', {}, d.unconfigured.map(u => h('tr', {}, h('td', {}, u.repo), h('td', {}, u.reason)))));
       }
       view.replaceChildren(...out.filter(Boolean));
     } else if (tab === 'blacklist') {
@@ -612,7 +649,8 @@ async function render() {
   } catch (e) { if (csrf) toast(e.message); }
 }
 
-function start() {
+async function start() {
+  await fetchAuthInfo();
   nav.hidden = false; loading(); render();
   clearInterval(timer); timer = setInterval(() => { if (!document.hidden && (tab === 'apps' || tab === 'catalog')) render(); }, 15000);
 }
