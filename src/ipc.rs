@@ -9,6 +9,7 @@ pub enum Command {
     Status(String),
     Verify(String),
     Quarantine(String),
+    Logs(String),
 }
 
 use std::io::Read;
@@ -33,6 +34,7 @@ impl Command {
             "status" => Ok(Command::Status(id)),
             "verify" => Ok(Command::Verify(id)),
             "quarantine" => Ok(Command::Quarantine(id)),
+            "logs" => Ok(Command::Logs(id)),
             _ => Err("unknown verb"),
         }
     }

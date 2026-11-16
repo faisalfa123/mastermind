@@ -49,6 +49,7 @@ pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
         }
         Command::Verify(id) => Ok(sha(&read_nofollow(&bin_path(cfg, &id), 96 << 20)?)),
         Command::Quarantine(id) => quarantine(cfg, &id),
+        Command::Logs(id) => logs(cfg, &id),
     }
 }
 
@@ -83,12 +84,14 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
         std::thread::sleep(std::time::Duration::from_secs(3));
         let active = systemctl(cfg, &["is-active", &unit_name(id)]).is_ok();
         if !active {
+            let log_err = logs(cfg, id).unwrap_or_else(|_| "tidak ada log journalctl".into());
+            let clean_log = log_err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
             if had_prev {
                 let _ = fs::rename(&prev, &target);
                 let _ = systemctl(cfg, &["restart", &unit_name(id)]);
-                return Err("new version failed health check, rolled back".into());
+                return Err(format!("new version failed health check, rolled back: {clean_log}"));
             }
-            return Err("service failed to start".into());
+            return Err(format!("service failed to start: {clean_log}"));
         }
     }
     let _ = fs::remove_dir_all(&st);
@@ -104,7 +107,19 @@ fn remove(cfg: &Config, id: &str) -> Result<String, String> {
     Ok(String::new())
 }
 
-/// Uninstalls the app and adds it to the root-only blacklist (hash + id). Staged files are discarded.
+fn logs(cfg: &Config, id: &str) -> Result<String, String> {
+    if cfg.dry_run { return Ok("dry-run logs".into()); }
+    let o = std::process::Command::new("journalctl")
+        .args(["-u", &unit_name(id), "-n", "30", "--no-pager"])
+        .output().map_err(|e| e.to_string())?;
+    let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    if out.is_empty() {
+        Ok(String::from_utf8_lossy(&o.stderr).trim().to_string())
+    } else {
+        Ok(out)
+    }
+}
+
 fn quarantine(cfg: &Config, id: &str) -> Result<String, String> {
     let st = staging(cfg, id);
     let bin = read_nofollow(&st.join("bin"), 96 << 20).or_else(|_| read_nofollow(&bin_path(cfg, id), 96 << 20))?;

@@ -163,6 +163,20 @@ fn system_info(app: &App) -> Value {
     json!({"mem_total_mb": t, "mem_avail_mb": a, "load": load, "temp_c": temp, "uptime_s": up, "lockdown": app.store.lock().unwrap().state.lockdown})
 }
 
+
+fn port_in_use(port: u16) -> bool {
+    if port == 0 { return false; }
+    let hex_port = format!(":{port:04X}");
+    for p in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        if let Ok(s) = std::fs::read_to_string(p) {
+            if s.lines().any(|l| l.split_whitespace().nth(1).map(|a| a.ends_with(&hex_port)).unwrap_or(false)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn cgroup_mem_mb(id: &str) -> Option<u64> {
     let p = format!("/sys/fs/cgroup/system.slice/mastermind-{id}.service/memory.current");
     std::fs::read_to_string(p).ok()?.trim().parse::<u64>().ok().map(|b| b / 1048576)
@@ -179,7 +193,7 @@ fn apps_json(app: &App, force: bool) -> Value {
         out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": e.priority, "port": e.port,
             "memory_max_mb": e.memory_max_mb, "cpu_quota_pct": e.cpu_quota_pct, "language": e.language,
             "installed": inst, "status": status, "verified": verified, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
-            "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id))}));
+            "port_busy": inst.is_none() && port_in_use(e.port), "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id))}));
     }
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
@@ -415,6 +429,13 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 if on { for (id, i) in apps { if i.priority > 10 { let _ = ipc::call(&app.cfg.helper_socket, &format!("stop {id}")); } } }
                 crate::notify::send(&app.cfg, "Lockdown", &format!("lockdown = {on}"));
                 json_resp(200, json!({"message": if on { "LOCKDOWN aktif" } else { "lockdown dimatikan" }}))
+            }
+            (Method::Get, ["apps", id, "logs"]) => {
+                if !ipc::valid_id(id) { return err(400, "bad id"); }
+                match ipc::call(&app.cfg.helper_socket, &format!("logs {id}")) {
+                    Ok(l) => json_resp(200, json!({"logs": l})),
+                    Err(e) => err(500, &e),
+                }
             }
             (Method::Get, ["apps", id, "install-logs"]) => {
                 let logs = app.install_logs.lock().unwrap();

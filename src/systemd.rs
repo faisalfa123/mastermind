@@ -8,12 +8,12 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     let nice = p / 5; // 0..20
     let oom = (p as i32 * 8) - 200; // -200 (protected) .. +600 (killed first)
     let mut rw = String::new();
-    for path in &b.permissions.paths_rw { rw.push_str(&format!("BindPaths=-{path}\nRequiresMountsFor={path}\n")); }
+    for path in &b.permissions.paths_rw { rw.push_str(&format!("BindPaths=-{path}\n")); }
     let mut ro = String::new();
     for path in &b.permissions.paths_ro { ro.push_str(&format!("BindReadOnlyPaths={path}\n")); }
     let jail = format!("/var/lib/mastermind/{id}");
     let mut sys = String::new();
-    for d in ["/usr/lib", "/lib", "/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"] {
+    for d in ["/usr/lib", "/lib", "/etc/ssl", "/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/usr/share/zoneinfo", "/bin/sh"] {
         sys.push_str(&format!("BindReadOnlyPaths=-{d}\n"));
     }
     if let Some(dir) = std::path::Path::new(bin_path).parent() {
