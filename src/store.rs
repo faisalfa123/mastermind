@@ -82,12 +82,15 @@ pub fn now() -> u64 {
 }
 
 pub fn write_atomic(path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let tmp = path.with_extension("tmp");
     let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(&tmp)?;
     f.write_all(data)?;
     f.sync_all()?;
-    fs::rename(tmp, path)
+    let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode));
+    fs::rename(tmp, path)?;
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode));
+    Ok(())
 }
 
 pub struct Store {

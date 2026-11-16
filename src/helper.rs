@@ -84,6 +84,7 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
     let had_prev = target.exists();
     if had_prev { fs::rename(&target, &prev).map_err(|e| e.to_string())?; }
     store::write_atomic(&target, &bin, 0o755).map_err(|e| e.to_string())?;
+    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o755));
     let unit_path = Path::new(&cfg.units_dir).join(unit_name(id));
     store::write_atomic(&unit_path, crate::systemd::unit(&b, &target.to_string_lossy()).as_bytes(), 0o644).map_err(|e| e.to_string())?;
     systemctl(cfg, &["daemon-reload"])?;

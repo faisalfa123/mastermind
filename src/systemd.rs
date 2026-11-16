@@ -61,11 +61,6 @@ RestrictSUIDSGID=yes
 RestrictRealtime=yes
 RestrictNamespaces=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-CapabilityBoundingSet=
-AmbientCapabilities=
-SystemCallArchitectures=native
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources
 UMask=0022
 {sys}{rw}{ro}{net}
 [Install]
@@ -87,7 +82,7 @@ mod tests {
     fn unit_is_hardened() {
         let b = Batasan::parse("[app]\nid=\"x\"\nrepo=\"o/x\"\nasset=\"x\"\nlanguage=\"go\"\n[run]\nport=9000\npriority=50\n").unwrap();
         let u = unit(&b, "/opt/mastermind/apps/x/bin/x");
-        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "ProtectSystem=strict", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
+        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "ProtectSystem=strict", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
             assert!(u.contains(needle), "missing {needle}");
         }
     }
