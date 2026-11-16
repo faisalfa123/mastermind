@@ -16,9 +16,6 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     for d in ["/usr/lib", "/lib", "/etc/ssl", "/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/usr/share/zoneinfo", "/bin/sh"] {
         sys.push_str(&format!("BindReadOnlyPaths=-{d}\n"));
     }
-    if let Some(dir) = std::path::Path::new(bin_path).parent() {
-        sys.push_str(&format!("BindReadOnlyPaths={}\n", dir.display()));
-    }
     for t in &b.permissions.tools {
         sys.push_str(&format!("BindReadOnlyPaths=-/usr/bin/{t}\n"));
     }
@@ -51,9 +48,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 BindPaths={jail}
-PrivateUsers=yes
 ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
