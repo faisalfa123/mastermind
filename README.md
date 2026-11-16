@@ -34,6 +34,36 @@ Installer TUI otomatis:
 
 ---
 
+## 🔄 Cara Memperbarui / Update Mastermind
+
+Ketika ada versi rilis baru, **jangan menimpa langsung binary saat service sedang berjalan** (akan memicu error kernel `curl: (23) client returned ERROR on write` karena binary terkunci/busy).
+
+### Pilihan 1: Satu Baris Perintah Otomatis (Direkomendasikan)
+```sh
+curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/update.sh -o /tmp/update.sh && sudo sh /tmp/update.sh
+```
+
+### Pilihan 2: Langkah Manual di Terminal DietPi
+```sh
+# 1. Hentikan service Mastermind sementara
+sudo systemctl stop mastermind-web mastermind-helper
+
+# 2. Unduh binary rilis arm64 terbaru ke folder temporary
+sudo curl -fsSL https://github.com/faisalfa123/mastermind/releases/latest/download/mastermind-linux-arm64 -o /tmp/mastermind-update
+
+# 3. Pasang binary baru secara aman ke /usr/local/bin
+sudo install -m 0755 /tmp/mastermind-update /usr/local/bin/mastermind
+rm -f /tmp/mastermind-update
+
+# 4. Jalankan kembali service Mastermind
+sudo systemctl start mastermind-helper mastermind-web
+
+# 5. Cek status service
+sudo systemctl status mastermind-web --no-pager
+```
+
+---
+
 ## 📧 Panduan Notifikasi Email Gmail (SMTP)
 
 Mastermind mengirimkan email otomatis ketika:
