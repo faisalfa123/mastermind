@@ -50,7 +50,6 @@ OOMScoreAdjust={oom}
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
-TemporaryFileSystem=/:ro
 BindPaths={jail}
 PrivateUsers=yes
 ProtectProc=invisible
@@ -72,7 +71,7 @@ AmbientCapabilities=
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
-UMask=0077
+UMask=0022
 {sys}{rw}{ro}{net}
 [Install]
 WantedBy=multi-user.target
@@ -93,7 +92,7 @@ mod tests {
     fn unit_is_hardened() {
         let b = Batasan::parse("[app]\nid=\"x\"\nrepo=\"o/x\"\nasset=\"x\"\nlanguage=\"go\"\n[run]\nport=9000\npriority=50\n").unwrap();
         let u = unit(&b, "/opt/mastermind/apps/x/bin/x");
-        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "TemporaryFileSystem=/:ro", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
+        for needle in ["NoNewPrivileges=yes", "DynamicUser=yes", "CapabilityBoundingSet=\n", "MemoryMax=64M", "IPAddressDeny=any", "OOMScoreAdjust=200", "ProtectSystem=strict", "BindPaths=/var/lib/mastermind/x", "ProtectProc=invisible", "Nice=10"] {
             assert!(u.contains(needle), "missing {needle}");
         }
     }
