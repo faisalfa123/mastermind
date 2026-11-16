@@ -70,6 +70,12 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
     let dir = bin_dir(cfg, id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).ok();
+
+    // Pastikan folder data/jail (/var/lib/mastermind/{id}) sudah ada
+    let jail_dir = Path::new(&cfg.data_dir).join(id);
+    fs::create_dir_all(&jail_dir).map_err(|e| e.to_string())?;
+    fs::set_permissions(&jail_dir, fs::Permissions::from_mode(0o755)).ok();
+
     let target = bin_path(cfg, id);
     let prev = dir.join("bin.prev");
     let had_prev = target.exists();
