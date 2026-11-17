@@ -278,10 +278,16 @@
     }
   }
 
-  // Animation render loop
+  // Animation render loop fixed at 24 FPS (save RAM & CPU for Odroid C2)
+  const FRAME_INTERVAL = 1000 / 24; // ~41.6ms
+  let lastSceneFrame = performance.now();
   function loop(now) {
-    if (isVisible) {
-      drawBackground();
+    if (isVisible && animMode !== 'off') {
+      const delta = now - lastSceneFrame;
+      if (delta >= FRAME_INTERVAL) {
+        lastSceneFrame = now - (delta % FRAME_INTERVAL);
+        drawBackground();
+      }
     }
     requestAnimationFrame(loop);
   }

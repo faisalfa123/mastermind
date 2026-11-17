@@ -202,7 +202,8 @@ fn apps_json(app: &App, force: bool) -> Value {
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
-        out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(aplikasi terkelola)", "priority": i.priority, "port": i.port,
+        let effective_port = if i.port > 0 { i.port } else { crate::localscan::default_app_port(id).unwrap_or(0) };
+        out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(aplikasi terkelola)", "priority": i.priority, "port": effective_port,
             "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct, "language": "?", "autostart": i.autostart, "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
     }
     json!({"apps": out, "unconfigured": bad, "lockdown": st.lockdown})

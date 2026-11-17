@@ -653,32 +653,3 @@ dialog input{margin-top:10px}
   transition: opacity 0.2s;
 }
 .pwa-install-pill:hover { opacity: 0.9; }
-
-.pwa-banner {
-  position: fixed;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  max-width: 480px;
-  background: var(--bg-card);
-  border: 1.5px solid var(--accent);
-  border-radius: 14px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  box-shadow: 0 12px 36px rgba(0,0,0,0.6);
-  z-index: 999;
-}
-.pwa-banner-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.pwa-icon { font-size: 24px; }
-.pwa-title { font-size: 12px; font-weight: bold; color: var(--ink); }
-.pwa-desc { font-size: 10.5px; color: var(--dim); }
-.pwa-banner-actions { display: flex; gap: 6px; }
-.pwa-banner-actions button { padding: 6px 12px; font-size: 11px; }

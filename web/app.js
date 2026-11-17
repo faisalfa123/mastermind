@@ -107,7 +107,7 @@ function showInstallTerminal(appId, title) {
 'use strict';
 const $ = s => document.querySelector(s);
 const view = $('#view'), nav = $('#nav');
-let csrf = '', tab = 'apps', timer = null;
+let csrf = '', tab = 'apps', timer = null, activeEditingApp = null;
 
 function h(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -180,38 +180,27 @@ function initKodamaEyeTracking() {
 }
 
 /* ==========================================================================
-   ADAPTIVE 12 - 24 FPS RENDER ENGINE (Anti-Jitter, Ramah CPU Odroid/STB)
+   FIXED 24 FPS RENDER ENGINE (Anti-Jitter, Hemat RAM & CPU Odroid C2)
    ========================================================================== */
-let targetFps = 18;
+const TARGET_FPS = 24;
+const FRAME_DURATION = 1000 / TARGET_FPS; // 41.66ms
 let lastFrameTime = performance.now();
 let lastFpsUpdate = performance.now();
 let frameCount = 0;
-let userActiveUntil = Date.now() + 5000;
-
-['mousemove', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
-  window.addEventListener(evt, () => {
-    userActiveUntil = Date.now() + 6000;
-  }, { passive: true });
-});
 
 function initAdaptiveFpsEngine() {
   const badge = $('#fps-badge');
   function loop(now) {
-    // Kurangi ke 12 FPS saat diam/idle untuk hemat daya SBC, naik ke 24 FPS saat ada interaksi aktif
-    const isActive = Date.now() < userActiveUntil;
-    targetFps = isActive ? 24 : 12;
-    const interval = 1000 / targetFps;
-
     const delta = now - lastFrameTime;
-    if (delta >= interval) {
-      lastFrameTime = now - (delta % interval);
+    if (delta >= FRAME_DURATION) {
+      lastFrameTime = now - (delta % FRAME_DURATION);
       frameCount++;
     }
 
     if (now - lastFpsUpdate >= 1000) {
       const realFps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
       if (badge) {
-        badge.textContent = `${Math.min(24, Math.max(10, realFps))} FPS`;
+        badge.textContent = `${Math.min(24, Math.max(1, realFps))} FPS`;
       }
       frameCount = 0;
       lastFpsUpdate = now;
@@ -392,9 +381,21 @@ function appCard(a) {
   const flipInner = h('div', { class: 'flip-card-inner' });
   const viewport = h('div', { class: 'flip-card-viewport' }, flipInner);
 
+  // Track currently active flipped config card
   const toggleFlip = () => {
+    const isFlipping = !flipInner.classList.contains('flipped');
     flipInner.classList.toggle('flipped');
+    if (isFlipping) {
+      activeEditingApp = a.id;
+    } else if (activeEditingApp === a.id) {
+      activeEditingApp = null;
+    }
   };
+
+  // Restore flipped state if card was actively being edited
+  if (activeEditingApp === a.id) {
+    flipInner.classList.add('flipped');
+  }
 
   // --- SISI DEPAN (FRONT FACE) ---
   const tabStatusBtn = h('button', { class: 'card-tab-item active', type: 'button' }, '📊 Status');
@@ -437,7 +438,7 @@ function appCard(a) {
     ),
     h('div', { style: { display: 'flex', justifyContent: 'space-between' } },
       h('span', { class: 'dim' }, 'Status Port:'),
-      h('span', { class: 'good' }, `:${a.port} Normal`)
+      h('span', { class: 'good' }, a.port ? `:${a.port} Normal` : 'Belum diatur')
     )
   );
 
@@ -461,18 +462,35 @@ function appCard(a) {
   tabLogsBtn.onclick = () => switchCardTab('logs');
   tabDiagBtn.onclick = () => switchCardTab('diag');
 
-  // Port banner with external link preview
+  // Direct HTTP link (murni http:// tanpa s) dengan tombol tes akses
   const appHost = window.location.hostname;
-  const appUrl = `${window.location.protocol}//${appHost}:${a.port}`;
+  const appPortNum = a.port || 0;
+  const appUrl = `http://${appHost}:${appPortNum}`;
+
+  const visitBtn = appPortNum > 0
+    ? h('a', {
+        href: appUrl,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: 'btn good',
+        style: 'font-size: 11px; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;',
+        title: `Buka langsung ke ${appUrl} (HTTP murni)`
+      }, 'Buka App ↗')
+    : h('button', {
+        class: 'btn ghost',
+        style: 'font-size: 10px; padding: 4px 8px;',
+        onclick: toggleFlip,
+        title: 'Port belum diatur, klik untuk mengatur port'
+      }, '⚙ Set Port');
+
   const portBanner = h('div', { style: 'background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;' },
     h('div', { style: 'display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: monospace;' },
       h('span', { class: 'dim' }, 'PORT:'),
-      h('span', { style: 'color: var(--accent); font-weight: bold;' }, `:${a.port}`),
-      (a.status === 'active' ? h('span', { class: 'tag ok-badge', style: 'padding: 1px 5px; font-size: 9px;' }, 'ONLINE') : null)
+      h('span', { style: { color: appPortNum ? 'var(--accent)' : 'var(--warn)', fontWeight: 'bold' } }, appPortNum ? `:${appPortNum}` : '[KOSONG]'),
+      (a.status === 'active' ? h('span', { class: 'tag ok-badge', style: 'padding: 1px 5px; font-size: 9px;' }, 'ONLINE') : null),
+      h('span', { class: 'tag', style: 'font-size: 8.5px; opacity: 0.8;' }, 'HTTP')
     ),
-    (a.status === 'active'
-      ? h('a', { href: appUrl, target: '_blank', rel: 'noopener', class: 'btn good', style: 'font-size: 11px; padding: 4px 8px; text-decoration: none;' }, 'Kunjungi \u2197')
-      : null)
+    visitBtn
   );
 
   // Front Actions
@@ -509,7 +527,7 @@ function appCard(a) {
   );
 
   // --- SISI BELAKANG (BACK FACE - FORM KONFIGURASI) ---
-  const inpPort = h('input', { type: 'number', value: a.port || 8080, min: '1024', max: '65535' });
+  const inpPort = h('input', { type: 'number', value: a.port || 8080, min: '80', max: '65535' });
   const inpRam = h('input', { type: 'number', value: a.memory_max_mb || 64, step: '16', min: '32', max: '2048' });
   const inpCpu = h('input', { type: 'number', value: a.cpu_quota_pct || 30, step: '5', min: '5', max: '100' });
   const inpPrio = h('input', { type: 'range', value: a.priority || 50, min: '0', max: '100', style: 'width: 100%;' });
@@ -528,7 +546,7 @@ function appCard(a) {
     if (p === 8443) {
       portNotice.textContent = 'Dipakai Mastermind ✗';
       portNotice.style.color = 'var(--danger)';
-    } else if (p < 1024 || p > 65535) {
+    } else if (p < 80 || p > 65535) {
       portNotice.textContent = 'Port tidak valid ✗';
       portNotice.style.color = 'var(--danger)';
     } else {
@@ -557,6 +575,7 @@ function appCard(a) {
         autostart: chkBoot.checked,
       });
       toast(res.message || 'Konfigurasi berhasil diterapkan!');
+      activeEditingApp = null;
       toggleFlip();
       render();
     } catch (err) {
@@ -867,98 +886,209 @@ async function renderCity() {
   try { d = await api('apps'); } catch (_) {}
   const installedApps = d.apps.filter(a => a.installed);
 
-  const canvasEl = h('canvas', { id: 'cityCanvas', width: '900', height: '460' });
+  const canvasEl = h('canvas', { id: 'cityCanvas', width: '900', height: '480' });
   const canvasWrap = h('div', { class: 'city-canvas-wrapper' },
     canvasEl,
     h('div', { class: 'city-badge' },
       h('span', { class: 'dot' }),
-      'Kota Isometrik Mastermind (The Sims 1 POV) • 60 FPS Canvas'
+      'Gedung Kantor Mastermind (The Sims Interior) • Fixed 24 FPS'
     ),
-    h('div', { class: 'city-instructions' }, 'Klik gedung untuk membuka kontrol aplikasi')
+    h('div', { class: 'city-instructions' }, 'Klik pegawai atau meja untuk kontrol cepat (Buka App / Restart / Stop)')
   );
 
   const cityCard = h('div', { class: 'card city-container' },
     h('div', {},
-      h('h3', {}, 'KOTA METROPOLITAN MASTERMIND'),
-      h('p', { class: 'dim', style: { fontSize: '11px' } }, 'Mastermind beroperasi sebagai Markas Kepolisian & Pengawas Sistem dengan model grid isometrik 2:1 modern yang hemat CPU.')
+      h('h3', {}, '🏢 KANTOR PUSAT OPERASIONAL MASTERMIND'),
+      h('p', { class: 'dim', style: 'font-size: 11px;' },
+        'Setiap pegawai mewakili sebuah aplikasi. Saat bekerja aktif, pegawai mengetik di Meja Kerja. ' +
+        'Saat service mati, pegawai tidur di Ruang Istirahat (Kamar Tidur). Saat restart, muncul indikator loading!'
+      )
     ),
     canvasWrap
   );
 
   view.replaceChildren(...[topBar, cityCard].filter(Boolean));
 
-  // Initialize Isometric Canvas Engine
+  // Initialize The Sims 1 Office Isometric Engine
   const ctx = canvasEl.getContext('2d');
   const resizeCanvas = () => {
     const rect = canvasWrap.getBoundingClientRect();
     canvasEl.width = rect.width || 900;
-    canvasEl.height = 440;
+    canvasEl.height = 460;
   };
   resizeCanvas();
 
-  const tileW = 60;
-  const tileH = 30;
+  const tileW = 56;
+  const tileH = 28;
 
   function toIso(x, y) {
     const originX = canvasEl.width / 2;
-    const originY = 100;
+    const originY = 80;
     return {
       isoX: originX + (x - y) * (tileW / 2),
       isoY: originY + (x + y) * (tileH / 2)
     };
   }
 
-  // 10x10 Grid Map: 0 = grass, 1 = road, 5 = zen trees
-  const grid = [
-    [0, 5, 0, 1, 0, 0, 1, 0, 5, 0],
-    [5, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-    [0, 0, 0, 1, 0, 0, 1, 0, 0, 5],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-    [0, 5, 0, 1, 0, 0, 1, 0, 5, 0],
-    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+  // Office Grid: 10x10 tiles
+  // X: 0..4 = Work Area (Meja PC)
+  // X: 5 = Hallway / Corridor Divider
+  // X: 6..9 = Breakroom & Bedroom (Tempat Tidur & Sofa)
+  const officeDesks = [
+    { gx: 1, gy: 2, app: null, title: 'Meja Mastermind HQ (Kernel)' },
+    { gx: 3, gy: 2, app: null },
+    { gx: 1, gy: 5, app: null },
+    { gx: 3, gy: 5, app: null },
+    { gx: 1, gy: 8, app: null },
+    { gx: 3, gy: 8, app: null }
   ];
 
-  // Assign building slots
-  const buildingSlots = [
-    { gx: 1, gy: 1, id: 'mastermind', name: 'HQ Polisi', icon: '🏛️', floors: 4, mainColor: '#1f2b23', roofColor: '#8ac275', isHQ: true },
-    { gx: 1, gy: 5, id: 'senandung', name: 'senandung', icon: '🎵', floors: 3, mainColor: '#27372d', roofColor: '#63a863', isHQ: false },
-    { gx: 8, gy: 2, id: 'immich', name: 'immich', icon: '🖼️', floors: 3, mainColor: '#27372d', roofColor: '#4255ff', isHQ: false },
-    { gx: 8, gy: 5, id: 'app3', name: 'app', icon: '🏢', floors: 2, mainColor: '#27372d', roofColor: '#e8d089', isHQ: false },
-    { gx: 4, gy: 1, id: 'app4', name: 'app', icon: '📦', floors: 3, mainColor: '#27372d', roofColor: '#d99166', isHQ: false },
+  const officeBeds = [
+    { gx: 7, gy: 2, occupant: null },
+    { gx: 9, gy: 2, occupant: null },
+    { gx: 7, gy: 5, occupant: null },
+    { gx: 9, gy: 5, occupant: null },
+    { gx: 7, gy: 8, occupant: null },
+    { gx: 9, gy: 8, occupant: null }
   ];
 
-  const activeBuildings = [buildingSlots[0]]; // Always HQ
-  installedApps.forEach((app, idx) => {
-    const slotIdx = 1 + idx;
-    if (slotIdx < buildingSlots.length) {
-      const slot = { ...buildingSlots[slotIdx] };
-      slot.id = app.id;
-      slot.name = app.id;
-      slot.icon = app.id === 'senandung' ? '🎵' : (app.id.includes('immich') ? '🖼️' : '🏢');
-      slot.app = app;
-      activeBuildings.push(slot);
-    }
+  // Map employees
+  const employees = [];
+  // Pegawai 0: Mastermind Chief (Selalu Aktif)
+  employees.push({
+    id: 'mastermind',
+    name: 'Mastermind HQ',
+    status: 'active',
+    deskGx: officeDesks[0].gx,
+    deskGy: officeDesks[0].gy,
+    bedGx: officeBeds[0].gx,
+    bedGy: officeBeds[0].gy,
+    curX: officeDesks[0].gx,
+    curY: officeDesks[0].gy,
+    targetX: officeDesks[0].gx,
+    targetY: officeDesks[0].gy,
+    color: '#8ac275',
+    hairColor: '#2d3748',
+    isHQ: true,
+    restarting: false,
+    port: 8443
   });
 
-  // Animated Vehicles
-  const cars = [
-    { x: 3, y: 0, speed: 0.04, axis: 'y', dir: 1, color: '#8ac275' },
-    { x: 6, y: 9, speed: 0.035, axis: 'y', dir: -1, color: '#d99166' },
-    { x: 0, y: 3, speed: 0.045, axis: 'x', dir: 1, color: '#e8d089' },
-    { x: 9, y: 6, speed: 0.04, axis: 'x', dir: -1, color: '#63a863' }
-  ];
+  installedApps.forEach((app, idx) => {
+    const dIdx = (idx + 1) % officeDesks.length;
+    const bIdx = (idx + 1) % officeBeds.length;
+    const isAct = app.status === 'active';
+    const desk = officeDesks[dIdx];
+    const bed = officeBeds[bIdx];
+    const emp = {
+      id: app.id,
+      name: app.id,
+      app,
+      status: app.status,
+      port: app.port || 0,
+      deskGx: desk.gx,
+      deskGy: desk.gy,
+      bedGx: bed.gx,
+      bedGy: bed.gy,
+      curX: isAct ? desk.gx : bed.gx,
+      curY: isAct ? desk.gy : bed.gy,
+      targetX: isAct ? desk.gx : bed.gx,
+      targetY: isAct ? desk.gy : bed.gy,
+      color: idx % 3 === 0 ? '#4255ff' : idx % 3 === 1 ? '#d99166' : '#63a863',
+      hairColor: idx % 2 === 0 ? '#1f2937' : '#92400e',
+      isHQ: false,
+      restarting: false
+    };
+    employees.push(emp);
+  });
 
-  // Animated Citizens (Sims)
-  const citizens = [
-    { x: 2.2, y: 3.2, speed: 0.015, dir: 1 },
-    { x: 5.5, y: 5.5, speed: -0.012, dir: -1 },
-    { x: 3.5, y: 1.5, speed: 0.018, dir: 1 }
-  ];
+  // Fast Action Popup
+  let selectedEmp = null;
+  canvasEl.onclick = (e) => {
+    const rect = canvasEl.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
 
+    let hit = null;
+    employees.forEach(emp => {
+      const p = toIso(emp.curX, emp.curY);
+      if (Math.hypot(cx - p.isoX, cy - (p.isoY - 14)) < 24) {
+        hit = emp;
+      }
+    });
+
+    if (hit) {
+      selectedEmp = hit;
+      showEmpQuickMenu(hit);
+    }
+  };
+
+  function showEmpQuickMenu(emp) {
+    let modal = document.getElementById('emp-quick-modal');
+    if (modal) modal.remove();
+
+    const host = window.location.hostname;
+    const directHttp = `http://${host}:${emp.port}`;
+
+    const acts = [];
+    if (!emp.isHQ) {
+      if (emp.status === 'active') {
+        acts.push(h('button', { class: 'ghost', onclick: async () => {
+          modal.remove();
+          emp.status = 'inactive';
+          toast(`Menghentikan ${emp.name}... Pegawai berjalan ke tempat tidur.`);
+          await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
+          render();
+        } }, '⏹ Hentikan (Tidur)'));
+        acts.push(h('button', { class: 'good', onclick: async () => {
+          modal.remove();
+          emp.restarting = true;
+          toast(`Me-restart ${emp.name}... Loading reboot pegawai.`);
+          await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
+          setTimeout(() => { emp.restarting = false; render(); }, 1600);
+        } }, '🔄 Restart (Reboot)'));
+      } else {
+        acts.push(h('button', { class: 'good', onclick: async () => {
+          modal.remove();
+          emp.status = 'active';
+          toast(`Menjalankan ${emp.name}... Pegawai bangun & bekerja.`);
+          await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
+          render();
+        } }, '▶ Mulai (Bekerja)'));
+      }
+
+      if (emp.port > 0) {
+        acts.push(h('a', {
+          href: directHttp,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          class: 'btn good',
+          style: 'padding: 6px 12px; text-decoration: none; font-size: 11px;',
+          onclick: () => modal.remove()
+        }, `Buka HTTP :${emp.port} ↗`));
+      }
+    }
+
+    modal = h('div', { id: 'emp-quick-modal', class: 'term-modal' },
+      h('div', { class: 'term-window', style: 'max-width: 380px; padding: 16px;' },
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
+          h('h3', { style: 'font-size: 14px; margin: 0;' }, `👤 Pegawai: ${emp.name}`),
+          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
+        ),
+        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 8px;' },
+          emp.isHQ ? 'Markas Mastermind: Penegak hukum dan pengawas utama sistem.' :
+          `Status: ${emp.status.toUpperCase()} • Port: :${emp.port || 'Belum disetel'}`
+        ),
+        h('div', { class: 'row', style: 'gap: 8px; flex-wrap: wrap; margin-top: 14px;' },
+          ...acts,
+          h('button', { class: 'ghost', onclick: () => { modal.remove(); tab = 'apps'; render(); } }, 'Detail Lengkap ↗')
+        )
+      )
+    );
+    document.body.appendChild(modal);
+  }
+
+  // Isometric Drawing Functions
   function drawIsoTile(gx, gy, color, border) {
     const p = toIso(gx, gy);
     ctx.beginPath();
@@ -976,172 +1106,196 @@ async function renderCity() {
     }
   }
 
-  function drawIsoBuilding(b) {
-    const p = toIso(b.gx, b.gy);
-    const height = b.floors * 24;
+  function drawDesk(gx, gy, isOccupied) {
+    const p = toIso(gx, gy);
+    // Desk Surface
+    ctx.fillStyle = '#2c3e35';
+    ctx.fillRect(p.isoX - 14, p.isoY + tileH / 2 - 8, 28, 12);
+    ctx.strokeStyle = '#3d5245';
+    ctx.strokeRect(p.isoX - 14, p.isoY + tileH / 2 - 8, 28, 12);
 
-    // Left wall
-    ctx.beginPath();
-    ctx.moveTo(p.isoX - tileW / 2, p.isoY + tileH / 2);
-    ctx.lineTo(p.isoX, p.isoY + tileH);
-    ctx.lineTo(p.isoX, p.isoY + tileH - height);
-    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2 - height);
-    ctx.closePath();
-    ctx.fillStyle = '#17221b';
-    ctx.fill();
-    ctx.strokeStyle = '#27372d';
-    ctx.stroke();
+    // PC Monitor
+    ctx.fillStyle = isOccupied ? '#8ac275' : '#1e2922';
+    ctx.fillRect(p.isoX - 7, p.isoY + tileH / 2 - 18, 14, 9);
+    // Monitor Stand
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(p.isoX - 2, p.isoY + tileH / 2 - 9, 4, 3);
+  }
 
-    // Right wall
-    ctx.beginPath();
-    ctx.moveTo(p.isoX, p.isoY + tileH);
-    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2);
-    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2 - height);
-    ctx.lineTo(p.isoX, p.isoY + tileH - height);
-    ctx.closePath();
-    ctx.fillStyle = b.mainColor;
-    ctx.fill();
-    ctx.strokeStyle = '#34473b';
-    ctx.stroke();
+  function drawBed(gx, gy, isOccupied) {
+    const p = toIso(gx, gy);
+    // Bed Mattress (Isometric rectangle)
+    ctx.fillStyle = '#2d3748';
+    ctx.fillRect(p.isoX - 12, p.isoY + tileH / 2 - 6, 24, 16);
+    // Blanket
+    ctx.fillStyle = isOccupied ? '#3182ce' : '#4a5568';
+    ctx.fillRect(p.isoX - 12, p.isoY + tileH / 2 - 1, 24, 11);
+    // Pillow
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(p.isoX - 9, p.isoY + tileH / 2 - 5, 18, 4);
+  }
 
-    // Roof diamond
-    ctx.beginPath();
-    ctx.moveTo(p.isoX, p.isoY - height);
-    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2 - height);
-    ctx.lineTo(p.isoX, p.isoY + tileH - height);
-    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2 - height);
-    ctx.closePath();
-    ctx.fillStyle = b.roofColor;
-    ctx.fill();
-    ctx.strokeStyle = '#8ac275';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Windows
-    for (let f = 0; f < b.floors; f++) {
-      for (let c = 0; c < 2; c++) {
-        const wx = p.isoX + 6 + c * 13;
-        const wy = p.isoY + tileH - (f + 1) * 20 + c * 6;
-        ctx.fillStyle = '#e8d089dd';
-        ctx.fillRect(wx, wy, 5, 6);
-      }
+  function drawSimEmployee(emp, tick) {
+    // Smooth walking logic between desk & bed
+    if (emp.status === 'active') {
+      emp.targetX = emp.deskGx;
+      emp.targetY = emp.deskGy;
+    } else {
+      emp.targetX = emp.bedGx;
+      emp.targetY = emp.bedGy;
     }
 
-    // Label on roof
+    // Move smoothly towards target
+    const dx = emp.targetX - emp.curX;
+    const dy = emp.targetY - emp.curY;
+    const dist = Math.hypot(dx, dy);
+    const isWalking = dist > 0.08;
+    if (isWalking) {
+      emp.curX += (dx / dist) * 0.04;
+      emp.curY += (dy / dist) * 0.04;
+    }
+
+    const p = toIso(emp.curX, emp.curY);
+    const bob = isWalking ? Math.sin(tick * 0.4) * 2 : (emp.status === 'active' ? Math.sin(tick * 0.15) * 0.8 : 0);
+
+    // Sim Citizen Body
+    const headY = p.isoY - 14 + bob;
+
+    if (emp.status === 'inactive' && !isWalking) {
+      // Sleeping in bed
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      const zOffset = (tick % 40) * 0.3;
+      ctx.fillText('Zzz..', p.isoX + 10, headY - 4 - zOffset);
+      return;
+    }
+
+    // Head
+    ctx.fillStyle = '#f6ad55';
+    ctx.beginPath();
+    ctx.arc(p.isoX, headY, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hair
+    ctx.fillStyle = emp.hairColor;
+    ctx.beginPath();
+    ctx.arc(p.isoX, headY - 2, 4, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // Body (Shirt)
+    ctx.fillStyle = emp.color;
+    ctx.fillRect(p.isoX - 4, headY + 4, 8, 7);
+
+    // Legs / Pants
+    ctx.fillStyle = '#1a202c';
+    ctx.fillRect(p.isoX - 3, headY + 11, 2.5, 5);
+    ctx.fillRect(p.isoX + 0.5, headY + 11, 2.5, 5);
+
+    // Head Icons & Mood Plumbob / Restarting Spinner
+    if (emp.restarting) {
+      // Rotating loading indicator
+      ctx.strokeStyle = '#e8d089';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const angle = (tick * 0.3) % (Math.PI * 2);
+      ctx.arc(p.isoX, headY - 12, 5, angle, angle + Math.PI * 1.5);
+      ctx.stroke();
+    } else {
+      // Sims 1 Plumbob (Green diamond)
+      ctx.fillStyle = emp.status === 'active' ? '#48bb78' : '#e53e3e';
+      ctx.beginPath();
+      ctx.moveTo(p.isoX, headY - 14);
+      ctx.lineTo(p.isoX + 3, headY - 10);
+      ctx.lineTo(p.isoX, headY - 6);
+      ctx.lineTo(p.isoX - 3, headY - 10);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Name Label
     ctx.fillStyle = '#eaf3eb';
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(b.icon + ' ' + b.name.slice(0, 9), p.isoX, p.isoY - height - 6);
+    ctx.fillText(emp.name.slice(0, 10), p.isoX, headY + 23);
   }
 
-  function drawIsoTree(gx, gy) {
-    const p = toIso(gx, gy);
-    ctx.fillStyle = '#483a4b';
-    ctx.fillRect(p.isoX - 2, p.isoY + tileH / 2 - 6, 4, 8);
-    ctx.beginPath();
-    ctx.arc(p.isoX, p.isoY + tileH / 2 - 14, 10, 0, Math.PI * 2);
-    ctx.fillStyle = '#3b5243';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(p.isoX, p.isoY + tileH / 2 - 17, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#63a863';
-    ctx.fill();
-  }
-
-  // Click on Building Detection
-  canvasEl.onclick = (e) => {
-    const rect = canvasEl.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-
-    activeBuildings.forEach(b => {
-      const p = toIso(b.gx, b.gy);
-      const topY = p.isoY - (b.floors * 24);
-      const botY = p.isoY + tileH;
-      if (cx >= p.isoX - tileW / 2 && cx <= p.isoX + tileW / 2 && cy >= topY && cy <= botY) {
-        if (b.isHQ) {
-          toast('Markas Kepolisian Mastermind: Sistem berjalan normal.');
-        } else if (b.app) {
-          tab = 'apps';
-          render();
-          toast(`Membuka kontrol aplikasi ${b.name}`);
-        }
-      }
-    });
-  };
-
+  // Animation Loop locked at fixed 24 FPS
   let tick = 0;
-  function animateCity() {
+  const ISO_FPS = 24;
+  const ISO_INTERVAL = 1000 / ISO_FPS;
+  let lastIsoFrame = performance.now();
+
+  function animateSimsOffice(now) {
+    cityAnimId = requestAnimationFrame(animateSimsOffice);
+    if (document.hidden) return;
+
+    const delta = now - lastIsoFrame;
+    if (delta < ISO_INTERVAL) return;
+    lastIsoFrame = now - (delta % ISO_INTERVAL);
     tick++;
+
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // Deep Dark Zen Background
-    ctx.fillStyle = '#0e1511';
+    // Floor Background
+    ctx.fillStyle = '#0d1511';
     ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // 1. Draw Grid Tiles (Roads & Grass)
+    // 1. Draw Office Floor Grid
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 10; x++) {
-        const t = grid[y][x];
-        if (t === 1) {
-          drawIsoTile(x, y, '#19221d', '#28362d');
+        if (x < 5) {
+          // Work Area (Greenish parquet)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#18241d' : '#1c2b22', '#293a30');
+        } else if (x === 5) {
+          // Glass / Wood Corridor Divider
+          drawIsoTile(x, y, '#131b16', '#223028');
         } else {
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#131d17' : '#17241c', '#202f25');
+          // Breakroom / Bedroom (Warm lounge carpet)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#202924' : '#25302a', '#2d3d34');
         }
       }
     }
 
-    // 2. Draw Citizens (Sims)
-    citizens.forEach(c => {
-      c.x += c.speed * c.dir;
-      if (c.x > 8.5) c.dir = -1;
-      if (c.x < 1.5) c.dir = 1;
-      const cp = toIso(c.x, c.y);
-      const bob = Math.sin(tick * 0.2 + c.x * 10) * 1.5;
-      ctx.fillStyle = '#eaf3eb';
-      ctx.fillRect(cp.isoX - 2, cp.isoY - 9 + bob, 4, 3);
-      ctx.fillStyle = '#8ac275';
-      ctx.fillRect(cp.isoX - 2, cp.isoY - 6 + bob, 4, 5);
-    });
-
-    // 3. Draw Vehicles
-    cars.forEach(car => {
-      if (car.axis === 'y') {
-        car.y += car.speed * car.dir;
-        if (car.y > 9.5) car.y = 0;
-        if (car.y < 0) car.y = 9.5;
-      } else {
-        car.x += car.speed * car.dir;
-        if (car.x > 9.5) car.x = 0;
-        if (car.x < 0) car.x = 9.5;
-      }
-      const p = toIso(car.x, car.y);
-      ctx.fillStyle = car.color;
-      ctx.beginPath();
-      ctx.moveTo(p.isoX, p.isoY - 3);
-      ctx.lineTo(p.isoX + 9, p.isoY + 1);
-      ctx.lineTo(p.isoX, p.isoY + 5);
-      ctx.lineTo(p.isoX - 9, p.isoY + 1);
-      ctx.closePath();
-      ctx.fill();
-    });
-
-    // 4. Draw Trees & Buildings (Sorted by Iso Depth X+Y)
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
-        if (grid[y][x] === 5) {
-          drawIsoTree(x, y);
-        }
-        const b = activeBuildings.find(item => item.gx === x && item.gy === y);
-        if (b) {
-          drawIsoBuilding(b);
-        }
-      }
+    // 2. Room Divider Wall between Work Area & Bedroom
+    for (let wy = 0; wy < 10; wy++) {
+      if (wy === 4 || wy === 5) continue; // Door passage
+      const p = toIso(5, wy);
+      ctx.fillStyle = '#26362d';
+      ctx.fillRect(p.isoX - 1, p.isoY - 18, 3, 24);
     }
 
-    cityAnimId = requestAnimationFrame(animateCity);
+    // Room Titles on Canvas
+    const wTitle = toIso(2, 0);
+    ctx.fillStyle = '#8ac275bb';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('💻 RUANG KERJA (AKTIF)', wTitle.isoX, wTitle.isoY - 8);
+
+    const bTitle = toIso(8, 0);
+    ctx.fillStyle = '#63b3edbb';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('🛏 RUANG ISTIRAHAT (SLEEP)', bTitle.isoX, bTitle.isoY - 8);
+
+    // 3. Draw Desks
+    officeDesks.forEach(d => {
+      const isOccupied = employees.some(e => e.deskGx === d.gx && e.deskGy === d.gy && e.status === 'active');
+      drawDesk(d.gx, d.gy, isOccupied);
+    });
+
+    // 4. Draw Beds
+    officeBeds.forEach(b => {
+      const isOccupied = employees.some(e => e.bedGx === b.gx && e.bedGy === b.gy && e.status !== 'active');
+      drawBed(b.gx, b.gy, isOccupied);
+    });
+
+    // 5. Draw Employees (Sims) sorted by Isometric Y
+    const sortedEmp = [...employees].sort((a, b) => (a.curX + a.curY) - (b.curX + b.curY));
+    sortedEmp.forEach(emp => drawSimEmployee(emp, tick));
   }
-  animateCity();
+
+  cityAnimId = requestAnimationFrame(animateSimsOffice);
 }
 
 async function renderImport() {
@@ -1261,7 +1415,12 @@ async function render() {
 async function start() {
   await fetchAuthInfo();
   nav.hidden = false; loading(); render();
-  clearInterval(timer); timer = setInterval(() => { if (!document.hidden && (tab === 'apps' || tab === 'catalog')) render(); }, 15000);
+  clearInterval(timer); timer = setInterval(() => {
+    // Jangan refresh otomatis jika tab disembunyikan atau pengguna sedang mengedit konfigurasi
+    if (!document.hidden && !activeEditingApp && (tab === 'apps' || tab === 'catalog')) {
+      render();
+    }
+  }, 15000);
 }
 
 nav.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; loading(); render(); } });
