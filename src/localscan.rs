@@ -13,14 +13,33 @@ pub fn parse_unit(name: &str, text: &str) -> Option<Value> {
     Some(json!({"name": name, "exec": exec, "port": port, "source": "sistem"}))
 }
 
+const SYSTEM_EXCLUDES: &[&str] = &[
+    "systemd", "dbus", "ssh", "sshd", "cron", "getty", "dietpi-", "cloud-init",
+    "avahi", "rsyslog", "udev", "wpa_supplicant", "networking", "dhcpcd",
+    "fail2ban", "apparmor", "emergency", "rescue", "rc-local", "kmod",
+    "ufw", "nftables", "iptables", "bluetooth", "cups", "smartmontools",
+    "polkit", "modprobe", "apt", "dpkg", "syslog", "journal", "dropbear"
+];
+
+pub fn is_system_service(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    SYSTEM_EXCLUDES.iter().any(|&ex| lower.contains(ex))
+}
+
 pub fn scan() -> Vec<Value> {
     let mut out = Vec::new();
-    if let Ok(rd) = std::fs::read_dir("/etc/systemd/system") {
-        for e in rd.flatten().take(200) {
-            let n = e.file_name().to_string_lossy().to_string();
-            if !n.ends_with(".service") || n.starts_with("mastermind") || n.starts_with("app-") { continue; }
-            if let Ok(t) = std::fs::read_to_string(e.path()) {
-                if let Some(v) = parse_unit(n.trim_end_matches(".service"), &t) { out.push(v); }
+    let mut seen = std::collections::HashSet::new();
+    for dir in &["/etc/systemd/system", "/lib/systemd/system"] {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten().take(300) {
+                let n = e.file_name().to_string_lossy().to_string();
+                if !n.ends_with(".service") || n.starts_with("mastermind") || n.starts_with("app-") { continue; }
+                let sname = n.trim_end_matches(".service");
+                if is_system_service(sname) || seen.contains(sname) { continue; }
+                seen.insert(sname.to_string());
+                if let Ok(t) = std::fs::read_to_string(e.path()) {
+                    if let Some(v) = parse_unit(sname, &t) { out.push(v); }
+                }
             }
         }
     }

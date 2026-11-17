@@ -190,16 +190,20 @@ fn apps_json(app: &App, force: bool) -> Value {
         let inst = st.apps.get(&e.id);
         let status = inst.map(|_| ipc::call(&app.cfg.helper_socket, &format!("status {}", e.id)).unwrap_or_else(|_| "unknown".into()));
         let verified = inst.map(|i| i.verified).unwrap_or_else(|| e.checksum_url.is_some());
-        out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": e.priority, "port": e.port,
-            "memory_max_mb": e.memory_max_mb, "cpu_quota_pct": e.cpu_quota_pct, "language": e.language,
+        let effective_port = inst.map(|i| if i.port > 0 { i.port } else { e.port }).unwrap_or(e.port);
+        let effective_mem = inst.map(|i| if i.memory_max_mb > 0 { i.memory_max_mb } else { e.memory_max_mb }).unwrap_or(e.memory_max_mb);
+        let effective_cpu = inst.map(|i| if i.cpu_quota_pct > 0 { i.cpu_quota_pct } else { e.cpu_quota_pct }).unwrap_or(e.cpu_quota_pct);
+        let autostart = inst.map(|i| i.autostart).unwrap_or(true);
+        out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": inst.map(|i| i.priority).unwrap_or(e.priority), "port": effective_port,
+            "memory_max_mb": effective_mem, "cpu_quota_pct": effective_cpu, "language": e.language, "autostart": autostart,
             "installed": inst, "status": status, "verified": verified, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
             "port_busy": inst.is_none() && port_in_use(e.port), "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id))}));
     }
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
-        out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(tidak ada di katalog)", "priority": i.priority, "port": 0,
-            "memory_max_mb": 0, "cpu_quota_pct": 0, "language": "?", "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
+        out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(aplikasi terkelola)", "priority": i.priority, "port": i.port,
+            "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct, "language": "?", "autostart": i.autostart, "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
     }
     json!({"apps": out, "unconfigured": bad, "lockdown": st.lockdown})
 }
@@ -320,6 +324,36 @@ fn handle(app: &Arc<App>, mut req: Request) {
             (Method::Get, ["sites"]) => {
                 let s = app.store.lock().unwrap();
                 json_resp(200, json!({"sites": s.state.sites}))
+            }
+            (Method::Get, ["external-apps"]) => {
+                let items = crate::localscan::scan();
+                json_resp(200, json!({"apps": items}))
+            }
+            (Method::Post, ["external-apps", "import"]) => {
+                let b = read_json(&mut req);
+                let name = b["name"].as_str().unwrap_or("").trim().to_lowercase().replace(' ', "-");
+                let port = b["port"].as_u64().unwrap_or(0) as u16;
+                if !ipc::valid_id(&name) { return err(400, "nama aplikasi tidak valid"); }
+                let mut s = app.store.lock().unwrap();
+                if s.state.apps.contains_key(&name) { return err(409, "aplikasi sudah terdaftar"); }
+                s.state.apps.insert(name.clone(), store::Installed {
+                    version: "external".into(),
+                    sha256: "external".into(),
+                    installed_at: store::now(),
+                    priority: 50,
+                    repo: format!("local/{name}"),
+                    verified: true,
+                    port,
+                    memory_max_mb: 256,
+                    cpu_quota_pct: 50,
+                    autostart: true,
+                    envs: vec![],
+                    extra_args: vec![],
+                    is_external: true,
+                });
+                s.log("admin", &format!("import-app {name} (port {port})"));
+                s.save().ok();
+                json_resp(200, json!({"ok": true, "message": format!("Aplikasi {name} berhasil diimpor ke Mastermind")}))
             }
             (Method::Post, ["search"]) => {
                 let b = read_json(&mut req);
@@ -453,6 +487,80 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         match ipc::call(&app.cfg.helper_socket, &format!("{action} {id}")) {
                             Ok(_) => { app.store.lock().unwrap().log("admin", &format!("{action} {id}")); json_resp(200, json!({"message": "OK"})) }
                             Err(e) => err(500, &e),
+                        }
+                    }
+                    "config" => {
+                        let pw = b["password"].as_str().unwrap_or("");
+                        let admin_opt = app.store.lock().unwrap().state.admin.clone();
+                        let Some(admin) = admin_opt else { return err(403, "admin belum diatur"); };
+                        if !crate::auth::verify_password(pw, &admin.pw_hash) {
+                            return err(403, "password admin salah");
+                        }
+                        if lockdown { return err(423, "lockdown aktif"); }
+                        let current_app = match app.store.lock().unwrap().state.apps.get(*id).cloned() {
+                            Some(a) => a,
+                            None => return err(404, "aplikasi tidak ditemukan"),
+                        };
+
+                        let new_port = b["port"].as_u64().unwrap_or(current_app.port as u64) as u16;
+                        let new_mem = b["memory_max_mb"].as_u64().unwrap_or(current_app.memory_max_mb as u64) as u32;
+                        let new_cpu = b["cpu_quota_pct"].as_u64().unwrap_or(current_app.cpu_quota_pct as u64) as u8;
+                        let new_prio = b["priority"].as_u64().unwrap_or(current_app.priority as u64) as u8;
+                        let new_autostart = b["autostart"].as_bool().unwrap_or(current_app.autostart);
+
+                        if new_port > 0 && new_port != current_app.port && port_in_use(new_port) {
+                            return err(409, &format!("port {new_port} sedang digunakan oleh service lain"));
+                        }
+
+                        // Buat staging batasan.toml baru
+                        let (entries, _) = app.catalog(false);
+                        let cat_entry = entries.into_iter().find(|e| &e.id == *id);
+                        let repo_name = cat_entry.as_ref().map(|e| e.repo.as_str()).unwrap_or(&current_app.repo);
+                        let asset_name = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.asset.as_str()).unwrap_or(*id);
+                        let lang = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.language.as_str()).unwrap_or("go");
+
+                        let new_toml = format!(
+"[app]
+id = \"{id}\"
+repo = \"{repo_name}\"
+asset = \"{asset_name}\"
+language = \"{lang}\"
+
+[run]
+port = {new_port}
+priority = {new_prio}
+
+[limits]
+memory_max_mb = {new_mem}
+cpu_quota_pct = {new_cpu}
+tasks_max = 64
+"                       );
+
+                        let st_dir = std::path::Path::new(&app.cfg.data_dir).join("staging").join(*id);
+                        let _ = std::fs::create_dir_all(&st_dir);
+                        if let Err(e) = store::write_atomic(&st_dir.join("batasan.toml"), new_toml.as_bytes(), 0o600) {
+                            return err(500, &format!("gagal menulis staging batasan: {e}"));
+                        }
+                        if !new_autostart {
+                            let _ = std::fs::write(st_dir.join("disable_autostart"), b"1");
+                        }
+
+                        // Panggil helper IPC reconfigure
+                        match ipc::call(&app.cfg.helper_socket, &format!("reconfigure {id}")) {
+                            Ok(_) => {
+                                let mut s = app.store.lock().unwrap();
+                                if let Some(app_record) = s.state.apps.get_mut(*id) {
+                                    app_record.port = new_port;
+                                    app_record.memory_max_mb = new_mem;
+                                    app_record.cpu_quota_pct = new_cpu;
+                                    app_record.priority = new_prio;
+                                    app_record.autostart = new_autostart;
+                                }
+                                s.log("admin", &format!("reconfigured {id} (port: {new_port}, ram: {new_mem}M)"));
+                                s.save().ok();
+                                json_resp(200, json!({"ok": true, "message": format!("Konfigurasi {id} berhasil diperbarui & service direstart")}))
+                            }
+                            Err(e) => err(422, &format!("Gagal menerapkan konfigurasi: {e}")),
                         }
                     }
                     "install" | "update" | "remove" => {

@@ -50,10 +50,66 @@ pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
         Command::Verify(id) => Ok(sha(&read_nofollow(&bin_path(cfg, &id), 96 << 20)?)),
         Command::Quarantine(id) => quarantine(cfg, &id),
         Command::Logs(id) => logs(cfg, &id),
+        Command::Reconfigure(id) => reconfigure(cfg, &id),
     }
 }
 
 fn staging(cfg: &Config, id: &str) -> PathBuf { Path::new(&cfg.data_dir).join("staging").join(id) }
+
+fn reconfigure(cfg: &Config, id: &str) -> Result<String, String> {
+    let st = staging(cfg, id);
+    let toml_bytes = read_nofollow(&st.join("batasan.toml"), 64 << 10)?;
+    let toml_str = String::from_utf8(toml_bytes).map_err(|_| "toml not utf-8")?;
+    let b = Batasan::parse(&toml_str).map_err(|e| e.to_string())?;
+    if b.app.id != id { return Err("id mismatch".into()); }
+
+    let target = bin_path(cfg, id);
+    if !target.exists() && !cfg.dry_run {
+        return Err("binary not found".into());
+    }
+
+    let unit_path = Path::new(&cfg.units_dir).join(unit_name(id));
+    let backup_path = Path::new(&cfg.units_dir).join(format!("{}.bak", unit_name(id)));
+
+    // Backup previous unit
+    if unit_path.exists() {
+        let _ = fs::copy(&unit_path, &backup_path);
+    }
+
+    let unit_content = crate::systemd::unit(&b, &target.to_string_lossy());
+    store::write_atomic(&unit_path, unit_content.as_bytes(), 0o644).map_err(|e| e.to_string())?;
+
+    // Check autostart flag file in staging
+    let autostart = !st.join("disable_autostart").exists();
+
+    systemctl(cfg, &["daemon-reload"])?;
+    if autostart {
+        let _ = systemctl(cfg, &["enable", &unit_name(id)]);
+    } else {
+        let _ = systemctl(cfg, &["disable", &unit_name(id)]);
+    }
+
+    systemctl(cfg, &["restart", &unit_name(id)])?;
+
+    if !cfg.dry_run {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let active = systemctl(cfg, &["is-active", &unit_name(id)]).is_ok();
+        if !active {
+            let log_err = logs(cfg, id).unwrap_or_else(|_| "tidak ada log journalctl".into());
+            let clean_log = log_err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
+            // Rollback unit
+            if backup_path.exists() {
+                let _ = fs::copy(&backup_path, &unit_path);
+                let _ = systemctl(cfg, &["daemon-reload"]);
+                let _ = systemctl(cfg, &["restart", &unit_name(id)]);
+            }
+            return Err(format!("reconfiguration failed health check, rolled back: {clean_log}"));
+        }
+    }
+    let _ = fs::remove_file(&backup_path);
+    let _ = fs::remove_dir_all(&st);
+    Ok("reconfigured".into())
+}
 
 fn install(cfg: &Config, id: &str) -> Result<String, String> {
     let st = staging(cfg, id);

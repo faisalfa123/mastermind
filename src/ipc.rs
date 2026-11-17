@@ -10,6 +10,7 @@ pub enum Command {
     Verify(String),
     Quarantine(String),
     Logs(String),
+    Reconfigure(String),
 }
 
 use std::io::Read;
@@ -35,6 +36,7 @@ impl Command {
             "verify" => Ok(Command::Verify(id)),
             "quarantine" => Ok(Command::Quarantine(id)),
             "logs" => Ok(Command::Logs(id)),
+            "reconfigure" => Ok(Command::Reconfigure(id)),
             _ => Err("unknown verb"),
         }
     }
@@ -58,7 +60,10 @@ pub fn call(sock: &str, line: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     #[test]
-    fn ok() { assert_eq!(Command::parse("start senandung"), Ok(Command::Start("senandung".into()))); }
+    fn ok() {
+        assert_eq!(Command::parse("start senandung"), Ok(Command::Start("senandung".into())));
+        assert_eq!(Command::parse("reconfigure senandung"), Ok(Command::Reconfigure("senandung".into())));
+    }
     #[test]
     fn rejects_injection() {
         for bad in ["start a;rm -rf /", "start ../etc", "start", "start a b", "exec a", "start A", "start $(id)", "start a\nstop b", ""] {

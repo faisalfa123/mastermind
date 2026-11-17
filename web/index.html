@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1b241e">
+<meta name="theme-color" content="#151d18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mastermind">
 <meta name="referrer" content="no-referrer">
 <title>Mastermind — Zen App Manager</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -32,6 +35,11 @@
   </div>
 
   <div class="header-controls">
+    <!-- PWA Install Button Header -->
+    <button id="pwa-install-btn" class="pwa-install-pill" onclick="window.triggerPwaInstall()" title="Pasang ke Layar Utama HP" hidden>
+      <span>📱 Install App</span>
+    </button>
+
     <!-- Theme Switcher -->
     <div class="theme-select-wrapper">
       <span class="theme-icon">🍵</span>
@@ -58,7 +66,9 @@
     <span class="fps-badge" id="fps-badge" title="Adaptive 12-24 FPS Rendering Engine">18 FPS</span>
 
     <nav id="nav" hidden>
+      <button data-tab="city">&#127961; KOTA</button>
       <button data-tab="apps" class="on">APPS</button>
+      <button data-tab="import">&#128269; IMPOR</button>
       <button data-tab="catalog">KATALOG</button>
       <button data-tab="sites">SITUS</button>
       <button data-tab="creator">RACIK BATASAN</button>
@@ -72,6 +82,21 @@
 <div id="offline" class="banner" hidden>KONEKSI TERPUTUS &mdash; Menampilkan data cache terakhir (hanya baca)</div>
 <main id="view"></main>
 <div id="toast" role="status" aria-live="polite"></div>
+
+<!-- PWA Floating Prompt Banner for Mobile -->
+<div id="pwa-banner" class="pwa-banner" hidden>
+  <div class="pwa-banner-content">
+    <div class="pwa-icon">📱</div>
+    <div>
+      <div class="pwa-title">Pasang Mastermind ke Layar Utama</div>
+      <div class="pwa-desc">Akses cepat tanpa bilah peramban di iOS & Android</div>
+    </div>
+  </div>
+  <div class="pwa-banner-actions">
+    <button class="ghost" onclick="document.getElementById('pwa-banner').hidden = true">Nanti</button>
+    <button class="good" onclick="window.triggerPwaInstall()">Pasang</button>
+  </div>
+</div>
 
 <!-- Modal dialog konfirmasi / 2FA -->
 <dialog id="dlg">

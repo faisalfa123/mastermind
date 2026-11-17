@@ -106,7 +106,21 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
             if !verified {
                 verdict.warnings.push("tidak memiliki verifikasi SHA256 (unverified)".into());
             }
-            g.state.apps.insert(e.id.clone(), Installed { version: e.version.clone(), sha256: h, installed_at: store::now(), priority: b.run.priority, repo: e.repo.clone(), verified });
+            g.state.apps.insert(e.id.clone(), Installed {
+                version: e.version.clone(),
+                sha256: h,
+                installed_at: store::now(),
+                priority: b.run.priority,
+                repo: e.repo.clone(),
+                verified,
+                port: b.run.port,
+                memory_max_mb: b.limits.memory_max_mb,
+                cpu_quota_pct: b.limits.cpu_quota_pct,
+                autostart: true,
+                envs: vec![],
+                extra_args: vec![],
+                is_external: false,
+            });
             g.log("admin", &format!("installed {} {}", e.id, e.version));
             g.save().ok();
             Ok(if verdict.warnings.is_empty() { "installed".into() } else { format!("installed with warnings: {}", verdict.warnings.join("; ")) })

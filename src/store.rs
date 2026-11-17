@@ -52,10 +52,26 @@ pub struct Installed {
     pub repo: String,
     #[serde(default = "d_true")]
     pub verified: bool,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default = "d_mem")]
+    pub memory_max_mb: u32,
+    #[serde(default = "d_cpu")]
+    pub cpu_quota_pct: u8,
+    #[serde(default = "d_true")]
+    pub autostart: bool,
+    #[serde(default)]
+    pub envs: Vec<String>,
+    #[serde(default)]
+    pub extra_args: Vec<String>,
+    #[serde(default)]
+    pub is_external: bool,
 }
 
 fn d_prio() -> u8 { 50 }
 fn d_true() -> bool { true }
+fn d_mem() -> u32 { 128 }
+fn d_cpu() -> u8 { 50 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct State {

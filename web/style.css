@@ -452,3 +452,233 @@ dialog input{margin-top:10px}
   color: #5af78e;
   border: 1px solid rgba(90, 247, 142, 0.45);
 }
+
+/* ==========================================================================
+   3D FLIP CARD & CONFIG EDITOR
+   ========================================================================== */
+.flip-card-viewport {
+  perspective: 1200px;
+  width: 100%;
+}
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  min-height: 480px;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.flip-card-inner.flipped {
+  transform: rotateY(180deg);
+}
+.flip-card-front, .flip-card-back {
+  width: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-card-back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotateY(180deg);
+  border: 2px solid var(--accent) !important;
+}
+
+/* Minimalist Icon Tabs inside App Card */
+.card-tab-bar {
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+.card-tab-item {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: all 0.2s;
+}
+.card-tab-item.active {
+  background: var(--bg-card);
+  color: var(--ink);
+  box-shadow: 0 2px 6px var(--shadow);
+  border: 1px solid var(--border);
+}
+
+/* Sparkline in Card */
+.sparkline-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+.sparkline-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.sparkline-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 32px;
+}
+.s-bar {
+  flex: 1;
+  background: var(--panel2);
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease;
+}
+.s-bar.active {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* Toggle Switch */
+.switch-control {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+}
+.switch-control input { opacity: 0; width: 0; height: 0; }
+.switch-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background-color: var(--panel2);
+  transition: .3s;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+}
+.switch-slider:before {
+  position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px;
+  background-color: var(--ink);
+  transition: .3s;
+  border-radius: 50%;
+}
+.switch-control input:checked + .switch-slider {
+  background-color: var(--good);
+  border-color: var(--good);
+}
+.switch-control input:checked + .switch-slider:before {
+  transform: translateX(18px);
+  background-color: var(--bg);
+}
+
+/* ==========================================================================
+   MASTERMIND CITY CANVAS & CONTROLS
+   ========================================================================== */
+.city-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.city-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  background: #0d1410;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: 0 12px 32px var(--shadow);
+}
+#cityCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.city-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(21, 29, 24, 0.9);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.city-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 6px var(--good);
+}
+.city-instructions {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(21, 29, 24, 0.85);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   PWA INSTALL PILL & FLOATING BANNER
+   ========================================================================== */
+.pwa-install-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.2s;
+}
+.pwa-install-pill:hover { opacity: 0.9; }
+
+.pwa-banner {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 480px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+  z-index: 999;
+}
+.pwa-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pwa-icon { font-size: 24px; }
+.pwa-title { font-size: 12px; font-weight: bold; color: var(--ink); }
+.pwa-desc { font-size: 10.5px; color: var(--dim); }
+.pwa-banner-actions { display: flex; gap: 6px; }
+.pwa-banner-actions button { padding: 6px 12px; font-size: 11px; }

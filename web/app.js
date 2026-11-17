@@ -362,38 +362,245 @@ function appCard(a) {
     ? h('span', { class: 'tag warn-badge', title: 'Diinstal / tersedia tanpa verifikasi SHA256 checksums.txt' }, '⚠ TANPA SHA256 (UNVERIFIED)')
     : h('span', { class: 'tag ok-badge', title: 'Terverifikasi SHA256 Checksum' }, '✔ SHA256 VERIFIED');
 
-  const kids = [
-    h('h3', {}, a.id),
+  if (!inst) {
+    // Uninstalled app card
+    return h('div', { class: 'card' },
+      h('h3', {}, a.id),
+      h('p', {}, a.description || a.repo),
+      h('p', {},
+        warnBadge,
+        h('span', { class: 'tag' }, 'PRIO ' + a.priority),
+        (a.port_busy ? h('span', { class: 'tag warn-badge', title: `Port :${a.port} sedang digunakan service lain!` }, `:${a.port} [BENTROK]`) : h('span', { class: 'tag' }, ':' + a.port)),
+        h('span', { class: 'tag' }, a.language.toUpperCase()),
+        h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`)),
+      h('p', {}, 'Rilis terbaru: ' + a.version),
+      h('div', { class: 'row' }, act('install', 'Install', 'good'))
+    );
+  }
+
+  // INSTALLED APP: 3D Flip Card Container
+  const flipInner = h('div', { class: 'flip-card-inner' });
+  const viewport = h('div', { class: 'flip-card-viewport' }, flipInner);
+
+  const toggleFlip = () => {
+    flipInner.classList.toggle('flipped');
+  };
+
+  // --- SISI DEPAN (FRONT FACE) ---
+  const tabStatusBtn = h('button', { class: 'card-tab-item active', type: 'button' }, '📊 Status');
+  const tabLogsBtn = h('button', { class: 'card-tab-item', type: 'button' }, '📜 Logs');
+  const tabDiagBtn = h('button', { class: 'card-tab-item', type: 'button' }, '🛡 Diagnostik');
+  const tabBar = h('div', { class: 'card-tab-bar' }, tabStatusBtn, tabLogsBtn, tabDiagBtn);
+
+  // Tab 1: Status & Sparkline
+  const sparkBars = [25, 40, 20, 55, 30, 45, 60, 35, 50].map((ht, idx) =>
+    h('div', { class: 's-bar' + (idx === 8 ? ' active' : ''), style: `height: ${ht}%;` })
+  );
+  const sparkBox = h('div', { class: 'sparkline-box' },
+    h('div', { class: 'sparkline-header' },
+      h('span', { class: 'dim' }, 'Beban CPU Cgroup'),
+      h('span', { style: 'color: var(--accent); font-weight: bold;' }, a.status === 'active' ? '1.2% Aktif' : '0% Idle')
+    ),
+    h('div', { class: 'sparkline-bars' }, ...sparkBars)
+  );
+
+  const tabStatusContent = h('div', {},
+    sparkBox,
+    h('p', { class: 's-' + a.status }, h('span', { class: 'led' }), a.status.toUpperCase(), ` \u2022 ${inst.version}`),
+    (a.mem_mb != null ? h('p', {}, `RAM ${a.mem_mb}/${a.memory_max_mb} MB`) : null),
+    (a.mem_mb != null ? bar(a.mem_mb, a.memory_max_mb) : null)
+  );
+
+  // Tab 2: Logs
+  const logBox = h('div', { style: 'background: var(--panel2); border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px; max-height: 140px; overflow-y: auto; white-space: pre-wrap;' }, 'Memuat ringkasan log...');
+  const tabLogsContent = h('div', { style: 'display: none;' }, logBox);
+
+  // Tab 3: Diagnostik
+  const tabDiagContent = h('div', { style: 'display: none; font-size: 11px; background: var(--panel); padding: 10px; border-radius: 6px;' },
+    h('div', { style: 'display: flex; justify-content: space-between; margin-bottom: 4px;' },
+      h('span', { class: 'dim' }, 'Jail Isolasi Sandbox:'),
+      h('span', { class: 'good' }, `/var/lib/mastermind/${a.id} (Terkunci ✓)`)
+    ),
+    h('div', { style: 'display: flex; justify-content: space-between; margin-bottom: 4px;' },
+      h('span', { class: 'dim' }, 'Auto-Start saat Boot:'),
+      h('span', { class: a.autostart !== false ? 'good' : 'dim' }, a.autostart !== false ? 'Aktif (Enabled)' : 'Non-Aktif')
+    ),
+    h('div', { style: 'display: flex; justify-content: space-between;' },
+      h('span', { class: 'dim' }, 'Status Port:'),
+      h('span', { class: 'good' }, `:${a.port} Normal`)
+    )
+  );
+
+  const switchCardTab = (name) => {
+    tabStatusBtn.classList.toggle('active', name === 'status');
+    tabLogsBtn.classList.toggle('active', name === 'logs');
+    tabDiagBtn.classList.toggle('active', name === 'diag');
+    tabStatusContent.style.display = (name === 'status') ? 'block' : 'none';
+    tabLogsContent.style.display = (name === 'logs') ? 'block' : 'none';
+    tabDiagContent.style.display = (name === 'diag') ? 'block' : 'none';
+
+    if (name === 'logs') {
+      api(`apps/${a.id}/logs`, 'GET').then(r => {
+        const lines = (r.logs || '').trim().split('\n').slice(-8).join('\n');
+        logBox.textContent = lines || 'Belum ada log.';
+      }).catch(e => { logBox.textContent = 'Gagal memuat log: ' + e.message; });
+    }
+  };
+
+  tabStatusBtn.onclick = () => switchCardTab('status');
+  tabLogsBtn.onclick = () => switchCardTab('logs');
+  tabDiagBtn.onclick = () => switchCardTab('diag');
+
+  // Port banner with external link preview
+  const appHost = window.location.hostname;
+  const appUrl = `${window.location.protocol}//${appHost}:${a.port}`;
+  const portBanner = h('div', { style: 'background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;' },
+    h('div', { style: 'display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: monospace;' },
+      h('span', { class: 'dim' }, 'PORT:'),
+      h('span', { style: 'color: var(--accent); font-weight: bold;' }, `:${a.port}`),
+      (a.status === 'active' ? h('span', { class: 'tag ok-badge', style: 'padding: 1px 5px; font-size: 9px;' }, 'ONLINE') : null)
+    ),
+    (a.status === 'active'
+      ? h('a', { href: appUrl, target: '_blank', rel: 'noopener', class: 'btn good', style: 'font-size: 11px; padding: 4px 8px; text-decoration: none;' }, 'Kunjungi \u2197')
+      : null)
+  );
+
+  // Front Actions
+  const frontActions = [];
+  if (a.status === 'active') {
+    frontActions.push(act('stop', 'Stop', 'ghost'));
+    frontActions.push(act('restart', 'Restart', ''));
+  } else {
+    frontActions.push(act('start', 'Start', 'good'));
+  }
+  frontActions.push(h('button', { class: 'ghost', onclick: () => showAppLogs(a.id) }, 'Log'));
+  if (a.update_available) frontActions.push(act('update', 'Update ' + a.version, ''));
+  frontActions.push(act('remove', 'Hapus', 'danger'));
+  frontActions.push(h('button', { class: 'good', style: 'margin-left: auto;', onclick: toggleFlip }, '⚙ Konfigurasi'));
+
+  const frontFace = h('div', { class: 'card flip-card-front' },
+    h('div', { style: 'display: flex; justify-content: space-between; align-items: flex-start;' },
+      h('h3', {}, a.id),
+      h('button', { class: 'ghost', style: 'padding: 3px 8px; font-size: 11px;', title: 'Ubah Konfigurasi', onclick: toggleFlip }, '⚙ Edit')
+    ),
     h('p', {}, a.description || a.repo),
     h('p', {},
       warnBadge,
       h('span', { class: 'tag' }, 'PRIO ' + a.priority),
-      (a.port_busy ? h('span', { class: 'tag warn-badge', title: `Port :${a.port} sedang digunakan service lain!` }, `:${a.port} [BENTROK]`) : h('span', { class: 'tag' }, ':' + a.port)),
       h('span', { class: 'tag' }, a.language.toUpperCase()),
-      h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`))
-  ];
+      h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`)
+    ),
+    portBanner,
+    tabBar,
+    tabStatusContent,
+    tabLogsContent,
+    tabDiagContent,
+    h('div', { class: 'row', style: 'flex-wrap: wrap; gap: 6px; margin-top: 14px;' }, ...frontActions)
+  );
 
-  if (inst) {
-    kids.push(h('p', { class: 's-' + a.status }, h('span', { class: 'led' }), a.status.toUpperCase(), ` \u2022 ${inst.version}`));
-    if (a.mem_mb != null) kids.push(h('p', {}, `RAM ${a.mem_mb}/${a.memory_max_mb} MB`), bar(a.mem_mb, a.memory_max_mb));
-    const r = [];
-    if (a.status === 'active') {
-      const appHost = window.location.hostname;
-      const appUrl = `${window.location.protocol}//${appHost}:${a.port}`;
-      r.push(h('a', { class: 'btn good', href: appUrl, target: '_blank', rel: 'noopener', style: 'text-decoration:none;display:inline-flex;align-items:center;' }, 'Buka App'));
-      r.push(act('stop', 'Stop', 'ghost'));
-      r.push(act('restart', 'Restart', ''));
+  // --- SISI BELAKANG (BACK FACE - FORM KONFIGURASI) ---
+  const inpPort = h('input', { type: 'number', value: a.port || 8080, min: '1024', max: '65535' });
+  const inpRam = h('input', { type: 'number', value: a.memory_max_mb || 64, step: '16', min: '32', max: '2048' });
+  const inpCpu = h('input', { type: 'number', value: a.cpu_quota_pct || 30, step: '5', min: '5', max: '100' });
+  const inpPrio = h('input', { type: 'range', value: a.priority || 50, min: '0', max: '100', style: 'width: 100%;' });
+  const prioVal = h('span', { style: 'font-family: monospace; color: var(--accent); font-weight: bold;' }, a.priority || 50);
+  inpPrio.oninput = (e) => { prioVal.textContent = e.target.value; };
+
+  const chkBoot = h('input', { type: 'checkbox', checked: a.autostart !== false });
+  const bootToggle = h('label', { class: 'switch-control' },
+    chkBoot,
+    h('span', { class: 'switch-slider' })
+  );
+
+  const portNotice = h('span', { style: 'font-size: 10px; color: var(--good); font-family: monospace;' }, 'Tersedia ✓');
+  inpPort.oninput = () => {
+    const p = parseInt(inpPort.value, 10);
+    if (p === 8443) {
+      portNotice.textContent = 'Dipakai Mastermind ✗';
+      portNotice.style.color = 'var(--danger)';
+    } else if (p < 1024 || p > 65535) {
+      portNotice.textContent = 'Port tidak valid ✗';
+      portNotice.style.color = 'var(--danger)';
     } else {
-      r.push(act('start', 'Start', 'good'));
+      portNotice.textContent = 'Tersedia ✓';
+      portNotice.style.color = 'var(--good)';
     }
-    r.push(h('button', { class: 'ghost', onclick: () => showAppLogs(a.id) }, 'Log'));
-    if (a.update_available) r.push(act('update', 'Update ' + a.version, ''));
-    r.push(act('remove', 'Hapus', 'danger'));
-    kids.push(h('div', { class: 'row', style: 'flex-wrap:wrap;gap:6px;' }, r));
-  } else {
-    kids.push(h('p', {}, 'Rilis terbaru: ' + a.version), h('div', { class: 'row' }, act('install', 'Install', 'good')));
-  }
-  return h('div', { class: 'card' }, kids);
+  };
+
+  const saveBtn = h('button', { class: 'good', style: 'flex: 1;' }, 'Simpan & Terapkan');
+  const cancelBtn = h('button', { class: 'ghost', type: 'button', onclick: toggleFlip }, 'Batal');
+
+  const configForm = h('form', { onsubmit: async (e) => {
+    e.preventDefault();
+    const pw = prompt(`Masukkan PASSWORD login Mastermind untuk menerapkan konfigurasi ${a.id}:`);
+    if (!pw) return;
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Menerapkan...';
+    try {
+      const res = await api(`apps/${a.id}/config`, 'POST', {
+        password: pw,
+        port: parseInt(inpPort.value, 10),
+        memory_max_mb: parseInt(inpRam.value, 10),
+        cpu_quota_pct: parseInt(inpCpu.value, 10),
+        priority: parseInt(inpPrio.value, 10),
+        autostart: chkBoot.checked,
+      });
+      toast(res.message || 'Konfigurasi berhasil diterapkan!');
+      toggleFlip();
+      render();
+    } catch (err) {
+      toast('GAGAL: ' + err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Simpan & Terapkan';
+    }
+  } },
+    h('div', { style: 'background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;' },
+      h('div', {},
+        h('div', { style: 'font-size: 11px; font-weight: bold;' }, 'Auto-Start saat Boot'),
+        h('div', { class: 'dim', style: 'font-size: 10px;' }, 'Jalankan otomatis saat server booting')
+      ),
+      bootToggle
+    ),
+    h('div', { style: 'background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Port HTTP'),
+        portNotice
+      ),
+      inpPort
+    ),
+    h('div', { class: 'row', style: 'gap: 8px;' },
+      h('div', { style: 'flex: 1; background: var(--panel); padding: 8px 10px; border-radius: 8px;' },
+        h('label', { style: 'font-size: 11px; display: block; margin-bottom: 4px;' }, 'RAM Max (MB)'),
+        inpRam
+      ),
+      h('div', { style: 'flex: 1; background: var(--panel); padding: 8px 10px; border-radius: 8px;' },
+        h('label', { style: 'font-size: 11px; display: block; margin-bottom: 4px;' }, 'CPU Quota (%)'),
+        inpCpu
+      )
+    ),
+    h('div', { style: 'background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-top: 8px; margin-bottom: 12px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Prioritas Eksekusi (Nice)'),
+        prioVal
+      ),
+      inpPrio
+    ),
+    h('div', { class: 'row', style: 'gap: 8px;' }, cancelBtn, saveBtn)
+  );
+
+  const backFace = h('div', { class: 'card flip-card-back' },
+    h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;' },
+      h('h3', { style: 'font-size: 14px;' }, `⚙ Konfigurasi: ${a.id}`),
+      h('button', { class: 'ghost', style: 'padding: 3px 8px; font-size: 11px;', onclick: toggleFlip }, '✕ Tutup')
+    ),
+    h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 10px;' }, 'Ubah batasan isolasi systemd & port aplikasi secara langsung.'),
+    configForm
+  );
+
+  flipInner.append(frontFace, backFace);
+  return viewport;
 }
 
 /* ==========================================================================
@@ -641,9 +848,274 @@ async function renderSites() {
 /* ==========================================================================
    RENDER & ROUTER
    ========================================================================== */
+let cityAnimId = null;
+
+async function renderCity() {
+  if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
+  const topBar = await sysbar();
+  let d = { apps: [] };
+  try { d = await api('apps'); } catch (_) {}
+  const installedApps = d.apps.filter(a => a.installed);
+
+  const canvasEl = h('canvas', { id: 'cityCanvas', width: '800', height: '400' });
+  const canvasWrap = h('div', { class: 'city-canvas-wrapper' },
+    canvasEl,
+    h('div', { class: 'city-badge' },
+      h('span', { class: 'dot' }),
+      'Kota Mastermind • 60 FPS Client-Side Canvas'
+    ),
+    h('div', { class: 'city-instructions' }, 'Klik gedung untuk membuka kontrol aplikasi')
+  );
+
+  const cityCard = h('div', { class: 'card city-container' },
+    h('div', {},
+      h('h3', {}, 'KOTA METROPOLITAN MASTERMIND'),
+      h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Mastermind beroperasi sebagai Markas Kepolisian & Pengawas Sistem, setiap aplikasi yang berjalan memiliki gedung otonom tersendiri.')
+    ),
+    canvasWrap
+  );
+
+  view.replaceChildren(...[topBar, cityCard].filter(Boolean));
+
+  // Initialize Canvas Logic
+  const ctx = canvasEl.getContext('2d');
+  const resizeCanvas = () => {
+    const rect = canvasWrap.getBoundingClientRect();
+    canvasEl.width = rect.width || 800;
+    canvasEl.height = 380;
+  };
+  resizeCanvas();
+
+  const buildings = [
+    { id: 'mastermind', name: 'Mastermind HQ', icon: '🏛️', x: 30, width: 95, height: 180, color: '#27372d', roofColor: '#8ac275', port: 8443, isHQ: true }
+  ];
+
+  installedApps.forEach((a, idx) => {
+    buildings.push({
+      id: a.id,
+      name: a.id,
+      icon: a.id === 'senandung' ? '🎵' : '🏢',
+      x: 150 + idx * 110,
+      width: 85,
+      height: 120 + ((idx * 27) % 50),
+      color: '#1f2b23',
+      roofColor: '#63a863',
+      port: a.port,
+      isHQ: false,
+      app: a,
+    });
+  });
+
+  const vehicles = [
+    { x: 0, speed: 1.5, color: '#8ac275' },
+    { x: 220, speed: 1.1, color: '#d99166' },
+    { x: 450, speed: -1.3, color: '#e8d089' }
+  ];
+
+  const workers = [
+    { x: 50, speed: 0.4, dir: 1 },
+    { x: 180, speed: -0.3, dir: -1 },
+    { x: 280, speed: 0.5, dir: 1 }
+  ];
+
+  canvasEl.onclick = (e) => {
+    const rect = canvasEl.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const roadY = canvasEl.height - 70;
+
+    buildings.forEach(b => {
+      const by = roadY - b.height;
+      if (cx >= b.x && cx <= b.x + b.width && cy >= by && cy <= roadY) {
+        if (b.isHQ) {
+          toast('Markas Kepolisian Mastermind: Sistem berjalan normal.');
+        } else if (b.app) {
+          tab = 'apps';
+          render();
+          toast(`Membuka kontrol aplikasi ${b.name}`);
+        }
+      }
+    });
+  };
+
+  let tick = 0;
+  function animateCity() {
+    tick++;
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+    // Sky
+    const grad = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
+    grad.addColorStop(0, '#0d130f');
+    grad.addColorStop(1, '#151d18');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+
+    // Moon / Lantern
+    ctx.fillStyle = '#e8d08922';
+    ctx.beginPath();
+    ctx.arc(canvasEl.width - 50, 40, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    const roadY = canvasEl.height - 70;
+
+    // Sidewalk & Road
+    ctx.fillStyle = '#1c261f';
+    ctx.fillRect(0, roadY, canvasEl.width, 16);
+    ctx.fillStyle = '#101612';
+    ctx.fillRect(0, roadY + 16, canvasEl.width, 54);
+
+    // Dashed center line
+    ctx.strokeStyle = '#e8d08944';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 10]);
+    ctx.beginPath();
+    ctx.moveTo(0, roadY + 42);
+    ctx.lineTo(canvasEl.width, roadY + 42);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw Buildings
+    buildings.forEach(b => {
+      const by = roadY - b.height;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x, by, b.width, b.height);
+      ctx.strokeStyle = '#3b5243';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(b.x, by, b.width, b.height);
+
+      ctx.fillStyle = b.roofColor;
+      ctx.fillRect(b.x, by, b.width, 7);
+
+      ctx.fillStyle = '#eaf3eb';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(b.icon + ' ' + b.name.slice(0, 8), b.x + b.width / 2, by + 22);
+
+      // Windows
+      const rows = Math.floor((b.height - 40) / 18);
+      const cols = Math.floor((b.width - 16) / 16);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const wx = b.x + 10 + c * 16;
+          const wy = by + 34 + r * 18;
+          const isLit = (Math.sin(tick * 0.03 + (b.x + wx + wy)) > -0.2);
+          ctx.fillStyle = isLit ? '#e8d089dd' : '#141e17';
+          ctx.fillRect(wx, wy, 9, 10);
+        }
+      }
+
+      // HQ Radar Beacon
+      if (b.isHQ) {
+        const beaconAngle = (tick * 0.1) % (Math.PI * 2);
+        ctx.fillStyle = Math.sin(beaconAngle) > 0 ? '#63a863' : '#8ac275';
+        ctx.beginPath();
+        ctx.arc(b.x + b.width / 2, by - 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // Draw Workers
+    workers.forEach(w => {
+      w.x += w.speed * w.dir;
+      if (w.x > canvasEl.width - 20) w.dir = -1;
+      if (w.x < 10) w.dir = 1;
+      const bob = Math.sin(tick * 0.2 + w.x) * 1.5;
+      ctx.fillStyle = '#9ab3a0';
+      ctx.fillRect(w.x, roadY + 4 + bob, 4, 7);
+      ctx.fillStyle = '#eaf3eb';
+      ctx.fillRect(w.x, roadY + 1 + bob, 4, 3);
+    });
+
+    // Draw Vehicles
+    vehicles.forEach(v => {
+      v.x += v.speed;
+      if (v.speed > 0 && v.x > canvasEl.width + 30) v.x = -30;
+      if (v.speed < 0 && v.x < -30) v.x = canvasEl.width + 30;
+      const vy = v.speed > 0 ? roadY + 22 : roadY + 36;
+      ctx.fillStyle = v.color;
+      ctx.fillRect(v.x, vy, 22, 10);
+      ctx.fillStyle = '#151d18';
+      ctx.fillRect(v.x + 5, vy - 4, 12, 5);
+      ctx.fillStyle = '#e8d089';
+      ctx.fillRect(v.speed > 0 ? v.x + 21 : v.x - 1, vy + 2, 2, 3);
+    });
+
+    cityAnimId = requestAnimationFrame(animateCity);
+  }
+  animateCity();
+}
+
+async function renderImport() {
+  if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
+  const topBar = await sysbar();
+  const card = h('div', { class: 'card' },
+    h('h3', {}, '🔍 DETEKSI & IMPOR APLIKASI MANDIRI (NON-SISTEM)'),
+    h('p', { class: 'dim', style: 'font-size: 11px;' },
+      'Memindai service aplikasi yang sudah terinstall di DietPi Anda (seperti Nextcloud, Immich, Jellyfin, dll). ' +
+      'Aplikasi HANYA akan dikelola setelah Anda menekan tombol "Kelola di Mastermind".'
+    )
+  );
+
+  const listCard = h('div', { class: 'card' }, h('p', { class: 'loading' }, 'Memindai service...'));
+  view.replaceChildren(...[topBar, card, listCard].filter(Boolean));
+
+  try {
+    const res = await api('external-apps', 'GET');
+    const apps = res.apps || [];
+    if (!apps.length) {
+      listCard.replaceChildren(h('p', { class: 'dim' }, 'Tidak ada aplikasi pihak ketiga mandiri yang terdeteksi saat ini.'));
+      return;
+    }
+
+    const rows = apps.map(app => {
+      const importBtn = h('button', { class: 'good', onclick: async () => {
+        importBtn.disabled = true;
+        importBtn.textContent = 'Mengimpor...';
+        try {
+          const r = await api('external-apps/import', 'POST', { name: app.name, port: app.port || 0 });
+          toast(r.message || 'Berhasil diimpor!');
+          tab = 'apps';
+          render();
+        } catch (e) {
+          toast('GAGAL: ' + e.message);
+          importBtn.disabled = false;
+          importBtn.textContent = '+ Kelola di Mastermind';
+        }
+      } }, '+ Kelola di Mastermind');
+
+      return h('tr', {},
+        h('td', { style: 'font-weight: bold;' }, app.name),
+        h('td', { style: 'font-family: monospace; color: var(--accent);' }, app.port ? `:${app.port}` : '-'),
+        h('td', { class: 'dim', style: 'font-size: 11px;' }, app.exec ? app.exec.slice(0, 45) + '...' : '-'),
+        h('td', {}, importBtn)
+      );
+    });
+
+    listCard.replaceChildren(
+      h('table', {},
+        h('tr', {}, h('th', {}, 'NAMA APLIKASI'), h('th', {}, 'PORT'), h('th', {}, 'EXECUTABLE'), h('th', {}, 'AKSI')),
+        ...rows
+      )
+    );
+  } catch (err) {
+    listCard.replaceChildren(h('p', { class: 'err' }, 'Gagal memindai: ' + err.message));
+  }
+}
+
 async function render() {
+  if (tab !== 'city' && cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
   document.querySelectorAll('nav [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   try {
+    if (tab === 'city') {
+      await renderCity();
+      return;
+    }
+
+    if (tab === 'import') {
+      await renderImport();
+      return;
+    }
+
     if (tab === 'sites') {
       await renderSites();
       return;
@@ -697,6 +1169,35 @@ nav.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); i
 $('#logout').addEventListener('click', async () => { await api('logout', 'POST').catch(() => {}); showLogin(); });
 window.addEventListener('online', () => { $('#offline').hidden = true; });
 window.addEventListener('offline', () => { $('#offline').hidden = false; });
+
+/* PWA Install Trigger */
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const pwaBtn = $('#pwa-install-btn');
+  const pwaBanner = $('#pwa-banner');
+  if (pwaBtn) pwaBtn.hidden = false;
+  if (pwaBanner && !sessionStorage.getItem('pwa-dismissed')) pwaBanner.hidden = false;
+});
+
+window.triggerPwaInstall = async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      toast('Mastermind dipasang ke layar utama!');
+    }
+    deferredPrompt = null;
+    const pwaBtn = $('#pwa-install-btn');
+    const pwaBanner = $('#pwa-banner');
+    if (pwaBtn) pwaBtn.hidden = true;
+    if (pwaBanner) pwaBanner.hidden = true;
+  } else {
+    // Petunjuk manual iOS Safari
+    alert("Instalasi PWA ke HP (iOS / Android):\n\n1. iPhone/iPad (Safari): Tekan tombol Bagikan (Share) ⎋ di bawah, lalu pilih 'Tambahkan ke Layar Utama' (Add to Home Screen) ⊞.\n2. Android (Chrome): Buka menu titik tiga ⋮ di pojok kanan atas, lalu pilih 'Pasang Aplikasi' / 'Install App'.");
+  }
+};
 
 (async () => {
   initTheme();
