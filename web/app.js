@@ -931,8 +931,15 @@ function playSfx(type) {
   } catch (_) {}
 }
 
+let office3DActive = true;
+let threeRenderer = null;
+
 async function renderCity() {
   if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
+  if (threeRenderer) {
+    try { threeRenderer.dispose(); } catch (_) {}
+    threeRenderer = null;
+  }
   const topBar = await sysbar();
   let d = { apps: [] };
   try { d = await api('apps'); } catch (_) {}
@@ -950,23 +957,23 @@ async function renderCity() {
     }
   }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
 
-  const canvasEl = h('canvas', { id: 'cityCanvas', width: '920', height: '500' });
-  const canvasWrap = h('div', { class: 'city-canvas-wrapper' },
-    canvasEl,
+  const container3D = h('div', { id: 'office3d-container', style: { width: '100%', height: '520px', position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0a100c' } });
+  const canvasWrap = h('div', { class: 'city-canvas-wrapper', style: { position: 'relative' } },
+    container3D,
     h('div', { class: 'city-badge', style: { display: 'flex', alignItems: 'center', gap: '8px' } },
       h('span', { class: 'dot' }),
-      'Hermes3D Workspace • 4-Zone Virtual Office (Fixed 24 FPS)',
+      'Hermes3D Workspace • True 3D WebGL (Orbit & Zoom) • 24 FPS Fixed',
       sfxBtn
     ),
-    h('div', { class: 'city-instructions' }, '💡 Klik Pegawai (App), Rak Server (Sistem), atau Meja Rapat (Standup Report)')
+    h('div', { class: 'city-instructions' }, '🖱️ Putar: Klik & Tarik Mouse • Zoom: Scroll • Klik Pegawai / Server / Meja Rapat')
   );
 
   const cityCard = h('div', { class: 'card city-container' },
     h('div', {},
-      h('h3', {}, '🏢 KANTOR VIRTUAL HERMES3D MASTERMIND'),
+      h('h3', {}, '🏢 KANTOR VIRTUAL HERMES3D MASTERMIND (TRUE 3D)'),
       h('p', { class: 'dim', style: { fontSize: '11px;' } },
-        'Setiap service aplikasi hidup sebagai pegawai aktif di kantor virtual 2.5D retro. ' +
-        'Zona Kerja: Meja PC • Zona Server: Rak Sistem (Restart) • Zona Huddle: Meja Rapat Standup • Zona Lounge: Kopi & Istirahat.'
+        'Kantor 3D sejati berbasis WebGL (Three.js) yang dirender 100% di browser Anda (Beban CPU server Odroid C2 = 0%). ' +
+        'Anda dapat memutar sudut kamera (Orbit 360°), zoom in/out, dan mengontrol service app yang menjadi staf di kantor ini!'
       )
     ),
     canvasWrap
@@ -974,91 +981,344 @@ async function renderCity() {
 
   view.replaceChildren(...[topBar, cityCard].filter(Boolean));
 
-  // Initialize Hermes3D 2.5D Isometric Engine
-  const ctx = canvasEl.getContext('2d');
-  const resizeCanvas = () => {
-    const rect = canvasWrap.getBoundingClientRect();
-    canvasEl.width = rect.width || 920;
-    canvasEl.height = 490;
-  };
-  resizeCanvas();
-
-  const tileW = 54;
-  const tileH = 27;
-
-  function toIso(x, y) {
-    const originX = canvasEl.width / 2;
-    const originY = 70;
-    return {
-      isoX: originX + (x - y) * (tileW / 2),
-      isoY: originY + (x + y) * (tileH / 2)
-    };
+  // Initialize Three.js Scene
+  if (typeof THREE === 'undefined') {
+    container3D.appendChild(h('p', { class: 'err', style: { padding: '20px' } }, 'Gagal memuat modul Three.js.'));
+    return;
   }
 
-  // Layout Grid 12x10:
-  // - Kiri-Atas (X: 0..5, Y: 0..4)   : WORKSTATIONS (Meja Kerja PC)
-  // - Kanan-Atas (X: 6..11, Y: 0..4) : SERVER ROOM (Rak Server & Pemeliharaan)
-  // - Kiri-Bawah (X: 0..5, Y: 5..9)  : HUDDLE TABLE (Meja Rapat Konferensi)
-  // - Kanan-Bawah (X: 6..11, Y: 5..9): PANTRY & LOUNGE (Kopi & Kamar Tidur)
+  const width = container3D.clientWidth || 920;
+  const height = 520;
 
-  const workstations = [
-    { gx: 1, gy: 1, title: 'Meja Mastermind HQ' },
-    { gx: 3, gy: 1 },
-    { gx: 1, gy: 3 },
-    { gx: 3, gy: 3 },
-    { gx: 5, gy: 1 },
-    { gx: 5, gy: 3 }
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a100c);
+  scene.fog = new THREE.FogExp2(0x0a100c, 0.015);
+
+  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+  camera.position.set(0, 18, 26);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container3D.appendChild(renderer.domElement);
+  threeRenderer = renderer;
+
+  // OrbitControls
+  let controls = null;
+  if (typeof THREE.OrbitControls !== 'undefined') {
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.maxPolarAngle = Math.PI / 2.05; // Prevent camera going below floor
+    controls.minDistance = 8;
+    controls.maxDistance = 45;
+    controls.target.set(0, 0, 0);
+  }
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+  scene.add(ambientLight);
+
+  const dirLight = new THREE.DirectionalLight(0xecfdf5, 0.9);
+  dirLight.position.set(15, 25, 15);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 1024;
+  dirLight.shadow.mapSize.height = 1024;
+  dirLight.shadow.camera.near = 0.5;
+  dirLight.shadow.camera.far = 60;
+  dirLight.shadow.camera.left = -20;
+  dirLight.shadow.camera.right = 20;
+  dirLight.shadow.camera.top = 20;
+  dirLight.shadow.camera.bottom = -20;
+  scene.add(dirLight);
+
+  // Accent Colored Lights for Hermes3D Aesthetic
+  const serverGlowLight = new THREE.PointLight(0x4299e1, 1.2, 16);
+  serverGlowLight.position.set(7, 3, -6);
+  scene.add(serverGlowLight);
+
+  const huddleGlowLight = new THREE.PointLight(0x8ac275, 1.0, 16);
+  huddleGlowLight.position.set(-6, 3, 5);
+  scene.add(huddleGlowLight);
+
+  // 1. Office Floor (4 Colored Zones)
+  // Work Area: X: -12..0, Z: -12..0 (Green parquet)
+  // Server Room: X: 0..12, Z: -12..0 (Tech Dark Metal)
+  // Huddle Area: X: -12..0, Z: 0..12 (Warm Boardroom Wood)
+  // Pantry & Lounge: X: 0..12, Z: 0..12 (Comfortable Carpet)
+
+  function createZoneTile(x, z, w, d, color) {
+    const geo = new THREE.BoxGeometry(w, 0.4, d);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, -0.2, z);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    return mesh;
+  }
+
+  createZoneTile(-6, -6, 12, 12, 0x16241c); // Zone 1: Workstations
+  createZoneTile(6, -6, 12, 12, 0x18242a);  // Zone 2: Server Room
+  createZoneTile(-6, 6, 12, 12, 0x242d26);  // Zone 3: Huddle Conference
+  createZoneTile(6, 6, 12, 12, 0x2c2e2d);   // Zone 4: Pantry Lounge
+
+  // Floor Grid lines
+  const gridHelper = new THREE.GridHelper(24, 24, 0x273b30, 0x1e2c24);
+  gridHelper.position.y = 0.01;
+  scene.add(gridHelper);
+
+  // Perimeter Low Walls
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1f2b23, roughness: 0.8 });
+  function addWall(x, z, w, d, h) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geo, wallMat);
+    mesh.position.set(x, h / 2, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+  }
+  addWall(0, -12.1, 24.2, 0.4, 1.8);
+  addWall(-12.1, 0, 0.4, 24.2, 1.8);
+  addWall(12.1, 0, 0.4, 24.2, 1.8);
+
+  // Zone 3D Furniture Storage
+  const interactiveObjects = [];
+
+  // Workstations (3D Desks with Monitors)
+  const deskLocations = [
+    { x: -8, z: -8, name: 'Meja Mastermind HQ' },
+    { x: -4, z: -8 },
+    { x: -8, z: -4 },
+    { x: -4, z: -4 },
+    { x: -8, z: -1 },
+    { x: -4, z: -1 }
   ];
 
-  const serverRacks = [
-    { gx: 8, gy: 1, name: 'Rack Alpha (Cgroups)' },
-    { gx: 9, gy: 1, name: 'Rack Beta (Systemd)' },
-    { gx: 10, gy: 1, name: 'Rack Gamma (IPC)' }
+  const deskMat = new THREE.MeshStandardMaterial({ color: 0x2d3e34, roughness: 0.6 });
+  const pcMat = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
+  const screenMatActive = new THREE.MeshBasicMaterial({ color: 0x8ac275 });
+  const screenMatIdle = new THREE.MeshBasicMaterial({ color: 0x2d3748 });
+
+  deskLocations.forEach(dl => {
+    // Desk Top
+    const dGeo = new THREE.BoxGeometry(2.4, 0.15, 1.4);
+    const dMesh = new THREE.Mesh(dGeo, deskMat);
+    dMesh.position.set(dl.x, 1.2, dl.z);
+    dMesh.castShadow = true;
+    dMesh.receiveShadow = true;
+    scene.add(dMesh);
+
+    // Legs
+    [-1, 1].forEach(lx => {
+      [-0.5, 0.5].forEach(lz => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2), pcMat);
+        leg.position.set(dl.x + lx * 1.0, 0.6, dl.z + lz * 0.5);
+        leg.castShadow = true;
+        scene.add(leg);
+      });
+    });
+
+    // Monitor
+    const mon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.08), pcMat);
+    mon.position.set(dl.x, 1.7, dl.z - 0.35);
+    mon.castShadow = true;
+    scene.add(mon);
+
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), screenMatActive);
+    scr.position.set(dl.x, 1.7, dl.z - 0.3);
+    scene.add(scr);
+  });
+
+  // Server Room (Zone 2): 3D Server Racks
+  const serverRackMeshes = [];
+  [-3, 0, 3].forEach((offset, idx) => {
+    const srvBox = new THREE.Mesh(new THREE.BoxGeometry(1.6, 4.2, 1.8), new THREE.MeshStandardMaterial({ color: 0x18201a, roughness: 0.4, metalness: 0.6 }));
+    srvBox.position.set(4 + offset * 1.8, 2.1, -8);
+    srvBox.castShadow = true;
+    srvBox.receiveShadow = true;
+    srvBox.userData = { type: 'server' };
+    scene.add(srvBox);
+    interactiveObjects.push(srvBox);
+    serverRackMeshes.push(srvBox);
+
+    // Server Tray Lines with blinking emissive LED lights
+    for (let i = 0; i < 5; i++) {
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: 0x48bb78 }));
+      led.position.set(4 + offset * 1.8 - 0.5 + i * 0.25, 0.8 + i * 0.7, -7.08);
+      scene.add(led);
+    }
+  });
+
+  // Huddle Conference Table (Zone 3)
+  const huddleTable = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.4, 2.4, 0.2, 32),
+    new THREE.MeshStandardMaterial({ color: 0x3d5042, roughness: 0.6 })
+  );
+  huddleTable.position.set(-6, 1.2, 6);
+  huddleTable.castShadow = true;
+  huddleTable.receiveShadow = true;
+  huddleTable.userData = { type: 'huddle' };
+  scene.add(huddleTable);
+  interactiveObjects.push(huddleTable);
+
+  const huddleStand = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 1.2, 16), pcMat);
+  huddleStand.position.set(-6, 0.6, 6);
+  scene.add(huddleStand);
+
+  // Hologram center on Huddle Table
+  const holoGeo = new THREE.OctahedronGeometry(0.4, 0);
+  const holoMat = new THREE.MeshBasicMaterial({ color: 0x8ac275, wireframe: true });
+  const hologram = new THREE.Mesh(holoGeo, holoMat);
+  hologram.position.set(-6, 2.0, 6);
+  scene.add(hologram);
+
+  // Whiteboard
+  const wb = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.0, 0.1), new THREE.MeshStandardMaterial({ color: 0xf7fafc, roughness: 0.3 }));
+  wb.position.set(-10, 2.2, 6);
+  wb.rotation.y = Math.PI / 2;
+  scene.add(wb);
+
+  // Pantry & Lounge (Zone 4): Coffee Machine & Beds
+  const coffeeCounter = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.2), new THREE.MeshStandardMaterial({ color: 0x313d35 }));
+  coffeeCounter.position.set(9, 0.65, 3);
+  coffeeCounter.castShadow = true;
+  coffeeCounter.userData = { type: 'coffee' };
+  scene.add(coffeeCounter);
+  interactiveObjects.push(coffeeCounter);
+
+  const coffeeMachine = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 0.7), new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.3 }));
+  coffeeMachine.position.set(9, 1.75, 3);
+  coffeeMachine.castShadow = true;
+  scene.add(coffeeMachine);
+
+  // Lounge Beds
+  const bedLocations = [
+    { x: 5, z: 8 },
+    { x: 8, z: 8 },
+    { x: 5, z: 10.5 },
+    { x: 8, z: 10.5 }
   ];
 
-  const huddleChairs = [
-    { gx: 2, gy: 6 },
-    { gx: 3, gy: 6 },
-    { gx: 4, gy: 6 },
-    { gx: 2, gy: 8 },
-    { gx: 4, gy: 8 }
-  ];
+  bedLocations.forEach(bl => {
+    const bFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.6), new THREE.MeshStandardMaterial({ color: 0x242e28 }));
+    bFrame.position.set(bl.x, 0.2, bl.z);
+    bFrame.castShadow = true;
+    scene.add(bFrame);
 
-  const loungeBeds = [
-    { gx: 8, gy: 7 },
-    { gx: 10, gy: 7 },
-    { gx: 8, gy: 9 },
-    { gx: 10, gy: 9 }
-  ];
+    const bMat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 1.6), new THREE.MeshStandardMaterial({ color: 0x3182ce, roughness: 0.8 }));
+    bMat.position.set(bl.x, 0.4, bl.z + 0.4);
+    scene.add(bMat);
 
-  // Map Employees (Service Apps)
+    const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+    pillow.position.set(bl.x, 0.45, bl.z - 0.8);
+    scene.add(pillow);
+  });
+
+  // 2. 3D Avatar Employees (Hermes3D Agent Workers)
   const employees = [];
-  // Pegawai 0: Mastermind Chief (Selalu Aktif)
+
+  function createAgentAvatar(emp) {
+    const group = new THREE.Group();
+
+    // Body / Shirt
+    const bodyGeo = new THREE.CylinderGeometry(0.35, 0.4, 1.0, 16);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: emp.color, roughness: 0.6 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 1.0;
+    body.castShadow = true;
+    group.add(body);
+
+    // Head
+    const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xf6ad55, roughness: 0.7 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 1.75;
+    head.castShadow = true;
+    group.add(head);
+
+    // Hair
+    const hairGeo = new THREE.SphereGeometry(0.34, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    const hairMat = new THREE.MeshStandardMaterial({ color: emp.hairColor, roughness: 0.9 });
+    const hair = new THREE.Mesh(hairGeo, hairMat);
+    hair.position.y = 1.8;
+    group.add(hair);
+
+    // Legs
+    const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x1a202c });
+    [-0.18, 0.18].forEach(lx => {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(lx, 0.35, 0);
+      leg.castShadow = true;
+      group.add(leg);
+    });
+
+    // Sims 1 Plumbob / Indicator above head
+    const plumbobGeo = new THREE.OctahedronGeometry(0.24, 0);
+    const plumbobMat = new THREE.MeshBasicMaterial({ color: emp.status === 'active' ? 0x48bb78 : 0xe53e3e });
+    const plumbob = new THREE.Mesh(plumbobGeo, plumbobMat);
+    plumbob.position.y = 2.45;
+    group.add(plumbob);
+
+    // Text Label Sprite
+    const canvasText = document.createElement('canvas');
+    canvasText.width = 256; canvasText.height = 64;
+    const tCtx = canvasText.getContext('2d');
+    tCtx.fillStyle = '#0e1511ee';
+    tCtx.fillRect(10, 10, 236, 44);
+    tCtx.strokeStyle = '#8ac275';
+    tCtx.lineWidth = 3;
+    tCtx.strokeRect(10, 10, 236, 44);
+    tCtx.fillStyle = '#eaf3eb';
+    tCtx.font = 'bold 24px monospace';
+    tCtx.textAlign = 'center';
+    tCtx.fillText(emp.name.slice(0, 14), 128, 41);
+
+    const texture = new THREE.CanvasTexture(canvasText);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.position.y = 2.95;
+    sprite.scale.set(1.8, 0.45, 1);
+    group.add(sprite);
+
+    group.position.set(emp.curX, 0, emp.curZ);
+    group.userData = { type: 'employee', emp };
+    scene.add(group);
+
+    emp.meshGroup = group;
+    emp.plumbob = plumbob;
+    interactiveObjects.push(body);
+    body.userData = { type: 'employee', emp };
+  }
+
+  // Pegawai 0: Mastermind Chief
   employees.push({
     id: 'mastermind',
     name: 'Mastermind',
     status: 'active',
-    deskGx: workstations[0].gx,
-    deskGy: workstations[0].gy,
-    curX: workstations[0].gx,
-    curY: workstations[0].gy,
-    targetX: workstations[0].gx,
-    targetY: workstations[0].gy,
-    color: '#8ac275',
-    hairColor: '#2d3748',
+    deskX: deskLocations[0].x,
+    deskZ: deskLocations[0].z + 0.8,
+    bedX: bedLocations[0].x,
+    bedZ: bedLocations[0].z,
+    curX: deskLocations[0].x,
+    curZ: deskLocations[0].z + 0.8,
+    targetX: deskLocations[0].x,
+    targetZ: deskLocations[0].z + 0.8,
+    color: 0x8ac275,
+    hairColor: 0x2d3748,
     isHQ: true,
     restarting: false,
-    port: 8443,
-    bubble: 'Isolasi Cgroups Aman ✓',
-    bubbleTimer: 160
+    port: 8443
   });
 
   installedApps.forEach((app, idx) => {
-    const wsIdx = (idx + 1) % workstations.length;
-    const bedIdx = (idx + 1) % loungeBeds.length;
+    const dIdx = (idx + 1) % deskLocations.length;
+    const bIdx = (idx + 1) % bedLocations.length;
     const isAct = app.status === 'active';
-    const desk = workstations[wsIdx];
-    const bed = loungeBeds[bedIdx];
+    const desk = deskLocations[dIdx];
+    const bed = bedLocations[bIdx];
 
     const emp = {
       id: app.id,
@@ -1066,25 +1326,56 @@ async function renderCity() {
       app,
       status: app.status,
       port: app.port || 0,
-      deskGx: desk.gx,
-      deskGy: desk.gy,
-      bedGx: bed.gx,
-      bedGy: bed.gy,
-      curX: isAct ? desk.gx : bed.gx,
-      curY: isAct ? desk.gy : bed.gy,
-      targetX: isAct ? desk.gx : bed.gx,
-      targetY: isAct ? desk.gy : bed.gy,
-      color: idx % 4 === 0 ? '#4255ff' : idx % 4 === 1 ? '#d99166' : idx % 4 === 2 ? '#63a863' : '#e53e3e',
-      hairColor: idx % 2 === 0 ? '#1f2937' : '#92400e',
+      deskX: desk.x,
+      deskZ: desk.z + 0.8,
+      bedX: bed.x,
+      bedZ: bed.z,
+      curX: isAct ? desk.x : bed.x,
+      curZ: isAct ? (desk.z + 0.8) : bed.z,
+      targetX: isAct ? desk.x : bed.x,
+      targetZ: isAct ? (desk.z + 0.8) : bed.z,
+      color: idx % 4 === 0 ? 0x4255ff : idx % 4 === 1 ? 0xd99166 : idx % 4 === 2 ? 0x63a863 : 0xe53e3e,
+      hairColor: idx % 2 === 0 ? 0x1f2937 : 0x92400e,
       isHQ: false,
-      restarting: false,
-      bubble: '',
-      bubbleTimer: 0
+      restarting: false
     };
     employees.push(emp);
   });
 
-  // Modal Popups for Interactive Hermes3D Office
+  employees.forEach(createAgentAvatar);
+
+  // Click & Raycasting Detection
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function onCanvasClick(e) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(interactiveObjects, false);
+
+    if (intersects.length > 0) {
+      const hit = intersects[0].object;
+      const type = hit.userData.type;
+
+      if (type === 'employee') {
+        showEmpQuickMenu(hit.userData.emp);
+      } else if (type === 'server') {
+        showServerRoomModal();
+      } else if (type === 'huddle') {
+        showStandupModal();
+      } else if (type === 'coffee') {
+        playSfx('chime');
+        toast('☕ Mesin Kopi Hermes3D: Secangkir kopi hangat disajikan untuk staf service!');
+      }
+    }
+  }
+
+  renderer.domElement.addEventListener('click', onCanvasClick);
+
+  // Modals for Interactive Features
   function showStandupModal() {
     playSfx('beep');
     let modal = document.getElementById('standup-modal');
@@ -1094,16 +1385,16 @@ async function renderCity() {
       h('td', { style: 'font-weight: bold;' }, e.name),
       h('td', {}, h('span', { class: 'tag ' + (e.status === 'active' ? 'ok-badge' : 's-stopped') }, e.status.toUpperCase())),
       h('td', { style: 'font-family: monospace; color: var(--accent);' }, e.port ? `:${e.port}` : '-'),
-      h('td', { class: 'dim', style: 'font-size: 11px;' }, e.status === 'active' ? 'Bekerja normal di meja' : 'Tidur di kamar istirahat')
+      h('td', { class: 'dim', style: 'font-size: 11px;' }, e.status === 'active' ? 'Online di meja kerja' : 'Offline di kamar tidur')
     ));
 
     modal = h('div', { id: 'standup-modal', class: 'term-modal' },
       h('div', { class: 'term-window', style: 'max-width: 540px; padding: 18px;' },
         h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
-          h('h3', { style: 'font-size: 14px; margin: 0;' }, '📋 LAPORAN RAPAT STANDUP KANTOR'),
+          h('h3', { style: 'font-size: 14px; margin: 0;' }, '📋 LAPORAN RAPAT STANDUP HERMES3D'),
           h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
         ),
-        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 10px;' }, 'Ringkasan operasional seluruh armada service app yang bertugas di Mastermind:'),
+        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 10px;' }, 'Status operasional seluruh armada service app yang bertugas di Mastermind:'),
         h('table', {},
           h('tr', {}, h('th', {}, 'PEGAWAI / APP'), h('th', {}, 'STATUS'), h('th', {}, 'PORT'), h('th', {}, 'KONDISI')),
           ...rows
@@ -1137,7 +1428,7 @@ async function renderCity() {
           h('div', { style: 'margin-bottom: 6px;' }, `🌡 SUHU CHIPSET: ${sys.temp_c != null ? sys.temp_c + '°C' : '-'}`),
           h('div', {}, `⏱ UPTIME SISTEM: ${Math.floor(sys.uptime_s / 3600)} Jam`)
         ),
-        h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Ruang server mengelola isolasi systemd slice dan pembatas memori cgroups untuk semua service app.'),
+        h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Mengelola isolasi cgroups slice & namespace kernel untuk service aplikasi.'),
         h('div', { style: 'margin-top: 14px; text-align: right;' },
           h('button', { class: 'good', onclick: () => modal.remove() }, 'Tutup Rak')
         )
@@ -1160,6 +1451,7 @@ async function renderCity() {
         acts.push(h('button', { class: 'ghost', onclick: async () => {
           modal.remove();
           emp.status = 'inactive';
+          emp.plumbob.material.color.setHex(0xe53e3e);
           toast(`Menghentikan ${emp.name}... Pegawai berjalan ke kamar istirahat.`);
           await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
           render();
@@ -1168,7 +1460,7 @@ async function renderCity() {
           modal.remove();
           emp.restarting = true;
           playSfx('chime');
-          toast(`Me-restart ${emp.name}... Pegawai berjalan ke ruang server untuk pemeliharaan.`);
+          toast(`Me-restart ${emp.name}... Pegawai menuju ruang server.`);
           await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
           setTimeout(() => { emp.restarting = false; render(); }, 1800);
         } }, '🔄 Restart (Pemeliharaan)'));
@@ -1176,6 +1468,7 @@ async function renderCity() {
         acts.push(h('button', { class: 'good', onclick: async () => {
           modal.remove();
           emp.status = 'active';
+          emp.plumbob.material.color.setHex(0x48bb78);
           playSfx('chime');
           toast(`Menjalankan ${emp.name}... Pegawai bangun & menuju meja kerja.`);
           await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
@@ -1214,390 +1507,76 @@ async function renderCity() {
     document.body.appendChild(modal);
   }
 
-  // Interactive Click Detection on Canvas
-  canvasEl.onclick = (e) => {
-    const rect = canvasEl.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-
-    // 1. Check Employees click
-    for (const emp of employees) {
-      const p = toIso(emp.curX, emp.curY);
-      if (Math.hypot(cx - p.isoX, cy - (p.isoY - 14)) < 24) {
-        showEmpQuickMenu(emp);
-        return;
-      }
-    }
-
-    // 2. Check Server Racks click (Zona 2)
-    const srvPos = toIso(9, 1);
-    if (Math.hypot(cx - srvPos.isoX, cy - (srvPos.isoY - 20)) < 40) {
-      showServerRoomModal();
-      return;
-    }
-
-    // 3. Check Huddle Table click (Zona 3)
-    const hudPos = toIso(3, 7);
-    if (Math.hypot(cx - hudPos.isoX, cy - hudPos.isoY) < 36) {
-      showStandupModal();
-      return;
-    }
-
-    // 4. Check Coffee Machine (Zona 4)
-    const cofPos = toIso(11, 5);
-    if (Math.hypot(cx - cofPos.isoX, cy - cofPos.isoY) < 26) {
-      playSfx('chime');
-      toast('☕ Mesin Kopi Pantry: Menyeduh kopi hangat untuk para service!');
-      return;
-    }
-  };
-
-  // Isometric Drawing Helpers
-  function drawIsoTile(gx, gy, color, border) {
-    const p = toIso(gx, gy);
-    ctx.beginPath();
-    ctx.moveTo(p.isoX, p.isoY);
-    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2);
-    ctx.lineTo(p.isoX, p.isoY + tileH);
-    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    if (border) {
-      ctx.strokeStyle = border;
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
-  }
-
-  function drawWorkstationDesk(gx, gy, isOccupied) {
-    const p = toIso(gx, gy);
-    // Desk table
-    ctx.fillStyle = '#2c3b32';
-    ctx.fillRect(p.isoX - 13, p.isoY + tileH / 2 - 8, 26, 12);
-    ctx.strokeStyle = '#3e5246';
-    ctx.strokeRect(p.isoX - 13, p.isoY + tileH / 2 - 8, 26, 12);
-
-    // PC Monitor
-    ctx.fillStyle = isOccupied ? '#8ac275' : '#1c2620';
-    ctx.fillRect(p.isoX - 7, p.isoY + tileH / 2 - 18, 14, 9);
-    // Monitor screen glow
-    if (isOccupied) {
-      ctx.fillStyle = '#b7e4a6';
-      ctx.fillRect(p.isoX - 5, p.isoY + tileH / 2 - 16, 10, 5);
-    }
-    // Stand
-    ctx.fillStyle = '#4a5568';
-    ctx.fillRect(p.isoX - 2, p.isoY + tileH / 2 - 9, 4, 3);
-  }
-
-  function drawServerRack(gx, gy, tick) {
-    const p = toIso(gx, gy);
-    const height = 48;
-    // Server tower box
-    ctx.fillStyle = '#18201a';
-    ctx.fillRect(p.isoX - 12, p.isoY - height, 24, height);
-    ctx.strokeStyle = '#2d3a30';
-    ctx.strokeRect(p.isoX - 12, p.isoY - height, 24, height);
-
-    // Front Server Trays & LED blinks
-    for (let i = 0; i < 4; i++) {
-      const sy = p.isoY - height + 6 + i * 10;
-      ctx.fillStyle = '#222d25';
-      ctx.fillRect(p.isoX - 10, sy, 20, 7);
-
-      // Blinking LEDs
-      const isBlink = (tick + i * 12) % 24 < 12;
-      ctx.fillStyle = isBlink ? '#8ac275' : '#4255ff';
-      ctx.fillRect(p.isoX - 8, sy + 2, 3, 3);
-      ctx.fillStyle = (tick + i * 8) % 18 < 9 ? '#e8d089' : '#1f2821';
-      ctx.fillRect(p.isoX - 3, sy + 2, 3, 3);
-    }
-  }
-
-  function drawHuddleTable(tick) {
-    const p = toIso(3, 7);
-    // Conference table ellipse
-    ctx.fillStyle = '#3a4b3f';
-    ctx.beginPath();
-    ctx.ellipse(p.isoX, p.isoY + tileH / 2 - 4, 34, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#4d6354';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-
-    // Tabletop Documents / Hologram
-    ctx.fillStyle = '#e8d089bb';
-    ctx.fillRect(p.isoX - 8, p.isoY + tileH / 2 - 8, 16, 7);
-
-    // Whiteboard stand behind table
-    const wb = toIso(1, 6);
-    ctx.fillStyle = '#4a5568';
-    ctx.fillRect(wb.isoX - 1, wb.isoY - 30, 2, 30);
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(wb.isoX - 14, wb.isoY - 38, 28, 18);
-    ctx.strokeStyle = '#cbd5e0';
-    ctx.strokeRect(wb.isoX - 14, wb.isoY - 38, 28, 18);
-    // Chart lines
-    ctx.fillStyle = '#48bb78';
-    ctx.fillRect(wb.isoX - 10, wb.isoY - 26, 5, 4);
-    ctx.fillRect(wb.isoX - 3, wb.isoY - 30, 5, 8);
-    ctx.fillRect(wb.isoX + 4, wb.isoY - 34, 5, 12);
-  }
-
-  function drawPantryCoffee(tick) {
-    const p = toIso(11, 5);
-    // Counter
-    ctx.fillStyle = '#313d35';
-    ctx.fillRect(p.isoX - 10, p.isoY + tileH / 2 - 8, 20, 14);
-    // Coffee Machine
-    ctx.fillStyle = '#e53e3e';
-    ctx.fillRect(p.isoX - 7, p.isoY + tileH / 2 - 20, 14, 12);
-    // Coffee pot
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(p.isoX - 4, p.isoY + tileH / 2 - 12, 8, 6);
-
-    // Steam Vapor
-    const steamY = (tick % 24) * 0.4;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.beginPath();
-    ctx.arc(p.isoX, p.isoY + tileH / 2 - 24 - steamY, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawBed(gx, gy, isOccupied) {
-    const p = toIso(gx, gy);
-    // Bed frame
-    ctx.fillStyle = '#242e28';
-    ctx.fillRect(p.isoX - 12, p.isoY + tileH / 2 - 6, 24, 16);
-    // Blanket
-    ctx.fillStyle = isOccupied ? '#3182ce' : '#4a5568';
-    ctx.fillRect(p.isoX - 12, p.isoY + tileH / 2 - 1, 24, 11);
-    // Pillow
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(p.isoX - 9, p.isoY + tileH / 2 - 5, 18, 4);
-  }
-
-  function drawSimEmployee(emp, tick) {
-    // Determine target location based on status & behavior
-    if (emp.restarting) {
-      // Walk to Server Room for repair / reboot
-      emp.targetX = serverRacks[0].gx;
-      emp.targetY = serverRacks[0].gy + 1;
-    } else if (emp.status === 'active') {
-      // Mostly at desk, occasionally standup at huddle
-      if ((tick + emp.port) % 480 > 420) {
-        emp.targetX = huddleChairs[0].gx;
-        emp.targetY = huddleChairs[0].gy;
-      } else {
-        emp.targetX = emp.deskGx;
-        emp.targetY = emp.deskGy;
-      }
-    } else {
-      // Inactive: go sleep in lounge bed
-      emp.targetX = emp.bedGx;
-      emp.targetY = emp.bedGy;
-    }
-
-    // Smooth movement
-    const dx = emp.targetX - emp.curX;
-    const dy = emp.targetY - emp.curY;
-    const dist = Math.hypot(dx, dy);
-    const isWalking = dist > 0.08;
-    if (isWalking) {
-      emp.curX += (dx / dist) * 0.04;
-      emp.curY += (dy / dist) * 0.04;
-      if (tick % 12 === 0) playSfx('step');
-    } else if (emp.status === 'active' && !emp.restarting && Math.random() < 0.02) {
-      playSfx('type');
-    }
-
-    const p = toIso(emp.curX, emp.curY);
-    const bob = isWalking ? Math.sin(tick * 0.4) * 2 : (emp.status === 'active' ? Math.sin(tick * 0.15) * 0.8 : 0);
-    const headY = p.isoY - 14 + bob;
-
-    if (emp.status === 'inactive' && !isWalking) {
-      // Sleeping in bed
-      ctx.fillStyle = '#e2e8f0';
-      ctx.font = '10px monospace';
-      ctx.textAlign = 'center';
-      const zOffset = (tick % 40) * 0.3;
-      ctx.fillText('Zzz..', p.isoX + 10, headY - 4 - zOffset);
-      return;
-    }
-
-    // Head
-    ctx.fillStyle = '#f6ad55';
-    ctx.beginPath();
-    ctx.arc(p.isoX, headY, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Hair
-    ctx.fillStyle = emp.hairColor;
-    ctx.beginPath();
-    ctx.arc(p.isoX, headY - 2, 4, Math.PI, Math.PI * 2);
-    ctx.fill();
-
-    // Body (Shirt)
-    ctx.fillStyle = emp.color;
-    ctx.fillRect(p.isoX - 4, headY + 4, 8, 7);
-
-    // Legs / Pants
-    ctx.fillStyle = '#1a202c';
-    ctx.fillRect(p.isoX - 3, headY + 11, 2.5, 5);
-    ctx.fillRect(p.isoX + 0.5, headY + 11, 2.5, 5);
-
-    // Status Indicator & Head Icons
-    if (emp.restarting) {
-      // Rotating loading gear/spinner
-      ctx.strokeStyle = '#e8d089';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      const angle = (tick * 0.3) % (Math.PI * 2);
-      ctx.arc(p.isoX, headY - 12, 5, angle, angle + Math.PI * 1.5);
-      ctx.stroke();
-
-      ctx.fillStyle = '#e8d089';
-      ctx.font = 'bold 8px monospace';
-      ctx.fillText('REBOOTING', p.isoX, headY - 20);
-    } else {
-      // Sims 1 Plumbob (Green diamond)
-      ctx.fillStyle = emp.status === 'active' ? '#48bb78' : '#e53e3e';
-      ctx.beginPath();
-      ctx.moveTo(p.isoX, headY - 14);
-      ctx.lineTo(p.isoX + 3, headY - 10);
-      ctx.lineTo(p.isoX, headY - 6);
-      ctx.lineTo(p.isoX - 3, headY - 10);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Speech / Status Bubble
-    if (emp.status === 'active' && !emp.restarting) {
-      emp.bubbleTimer--;
-      if (emp.bubbleTimer <= 0) {
-        if (Math.random() < 0.25) {
-          emp.bubble = emp.isHQ ? 'Isolasi Normal ✓' : `${emp.name}: Port :${emp.port || 8080} OK`;
-          emp.bubbleTimer = 90; // Tampilkan 90 frame (~3.7 detik)
-        } else {
-          emp.bubble = '';
-          emp.bubbleTimer = 180 + Math.floor(Math.random() * 120);
-        }
-      }
-
-      if (emp.bubble) {
-        ctx.fillStyle = 'rgba(21, 29, 24, 0.9)';
-        ctx.strokeStyle = '#8ac275';
-        ctx.lineWidth = 1;
-        const bWidth = emp.bubble.length * 6 + 12;
-        ctx.fillRect(p.isoX - bWidth / 2, headY - 32, bWidth, 14);
-        ctx.strokeRect(p.isoX - bWidth / 2, headY - 32, bWidth, 14);
-
-        ctx.fillStyle = '#eaf3eb';
-        ctx.font = '9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(emp.bubble, p.isoX, headY - 22);
-      }
-    }
-
-    // Name Label
-    ctx.fillStyle = '#eaf3eb';
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(emp.name.slice(0, 10), p.isoX, headY + 23);
-  }
-
-  // Animation Loop fixed at 24 FPS
+  // 3D Animation Loop locked at fixed 24 FPS
   let tick = 0;
-  const ISO_FPS = 24;
-  const ISO_INTERVAL = 1000 / ISO_FPS;
-  let lastIsoFrame = performance.now();
+  const THREE_FPS = 24;
+  const THREE_INTERVAL = 1000 / THREE_FPS;
+  let last3DFrame = performance.now();
 
-  function animateHermesOffice(now) {
-    cityAnimId = requestAnimationFrame(animateHermesOffice);
+  function animate3D(now) {
+    cityAnimId = requestAnimationFrame(animate3D);
     if (document.hidden) return;
 
-    const delta = now - lastIsoFrame;
-    if (delta < ISO_INTERVAL) return;
-    lastIsoFrame = now - (delta % ISO_INTERVAL);
+    const delta = now - last3DFrame;
+    if (delta < THREE_INTERVAL) return;
+    last3DFrame = now - (delta % THREE_INTERVAL);
     tick++;
 
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    if (controls) controls.update();
 
-    // Deep Dark Ambient Floor Background
-    ctx.fillStyle = '#0a100c';
-    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+    // Rotate Hologram on Huddle Table
+    hologram.rotation.y += 0.04;
+    hologram.rotation.x = Math.sin(tick * 0.05) * 0.2;
 
-    // 1. Draw 12x10 Floor Tiles by Zone
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 12; x++) {
-        if (x < 6 && y < 5) {
-          // Zone 1: Workstations (Modern Green Parquet)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#16231b' : '#1a2920', '#25382c');
-        } else if (x >= 6 && y < 5) {
-          // Zone 2: Server Room (Metallic Tech Tile)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#151e22' : '#18242a', '#273840');
-        } else if (x < 6 && y >= 5) {
-          // Zone 3: Huddle Conference (Warm Boardroom Wood)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#212a23' : '#27332a', '#344538');
+    // Animate Employees position & plumbob rotation
+    employees.forEach(emp => {
+      if (emp.restarting) {
+        emp.targetX = 4;
+        emp.targetZ = -5.8;
+      } else if (emp.status === 'active') {
+        // Mostly at desk, periodically huddle
+        if ((tick + emp.port) % 480 > 400) {
+          emp.targetX = -6 + Math.cos(emp.port) * 2.5;
+          emp.targetZ = 6 + Math.sin(emp.port) * 2.5;
         } else {
-          // Zone 4: Pantry & Lounge (Cozy Carpet)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#232624' : '#2b2e2c', '#383d3a');
+          emp.targetX = emp.deskX;
+          emp.targetZ = emp.deskZ;
         }
+      } else {
+        emp.targetX = emp.bedX;
+        emp.targetZ = emp.bedZ;
       }
-    }
 
-    // 2. Zone Dividers & Hallways
-    for (let x = 0; x < 12; x++) {
-      if (x === 5 || x === 6) continue;
-      const p = toIso(x, 5);
-      ctx.fillStyle = '#1e2d24';
-      ctx.fillRect(p.isoX - tileW / 2, p.isoY - 6, tileW, 4);
-    }
+      // Smooth step movement
+      const dx = emp.targetX - emp.curX;
+      const dz = emp.targetZ - emp.curZ;
+      const dist = Math.hypot(dx, dz);
+      const isWalking = dist > 0.08;
 
-    // Zone Header Labels
-    const z1 = toIso(2, 0);
-    ctx.fillStyle = '#8ac275bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('💻 1. RUANG MEJA KERJA', z1.isoX, z1.isoY - 8);
+      if (isWalking) {
+        emp.curX += (dx / dist) * 0.08;
+        emp.curZ += (dz / dist) * 0.08;
+        emp.meshGroup.rotation.y = Math.atan2(dx, dz);
+        if (tick % 12 === 0) playSfx('step');
+      } else if (emp.status === 'active' && !emp.restarting && Math.random() < 0.02) {
+        playSfx('type');
+      }
 
-    const z2 = toIso(9, 0);
-    ctx.fillStyle = '#63b3edbb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('🖥 2. RAK SERVER (MAINTENANCE)', z2.isoX, z2.isoY - 8);
+      emp.meshGroup.position.x = emp.curX;
+      emp.meshGroup.position.z = emp.curZ;
 
-    const z3 = toIso(2, 9);
-    ctx.fillStyle = '#e8d089bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('📋 3. AREA RAPAT HUDDLE', z3.isoX, z3.isoY + tileH + 16);
+      // Bobbing animation
+      const bob = isWalking ? Math.sin(tick * 0.5) * 0.1 : (emp.status === 'active' ? Math.sin(tick * 0.15) * 0.03 : 0);
+      emp.meshGroup.position.y = bob;
 
-    const z4 = toIso(9, 9);
-    ctx.fillStyle = '#fc8181bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('☕ 4. PANTRY & LOUNGE TIDUR', z4.isoX, z4.isoY + tileH + 16);
-
-    // 3. Draw Zone Furniture
-    // Zone 1: Workstations
-    workstations.forEach(ws => {
-      const isOccupied = employees.some(e => e.deskGx === ws.gx && e.deskGy === ws.gy && e.status === 'active');
-      drawWorkstationDesk(ws.gx, ws.gy, isOccupied);
+      // Spin plumbob
+      if (emp.plumbob) emp.plumbob.rotation.y += 0.05;
     });
 
-    // Zone 2: Server Racks
-    serverRacks.forEach(sr => drawServerRack(sr.gx, sr.gy, tick));
-
-    // Zone 3: Huddle Table
-    drawHuddleTable(tick);
-
-    // Zone 4: Coffee Machine & Beds
-    drawPantryCoffee(tick);
-    loungeBeds.forEach(b => {
-      const isOccupied = employees.some(e => e.bedGx === b.gx && e.bedGy === b.gy && e.status !== 'active');
-      drawBed(b.gx, b.gy, isOccupied);
-    });
-
-    // 4. Draw Employees (Sims) sorted by Isometric Depth
-    const sortedEmp = [...employees].sort((a, b) => (a.curX + a.curY) - (b.curX + b.curY));
-    sortedEmp.forEach(emp => drawSimEmployee(emp, tick));
+    renderer.render(scene, camera);
   }
 
-  cityAnimId = requestAnimationFrame(animateHermesOffice);
+  cityAnimId = requestAnimationFrame(animate3D);
 }
 
 async function renderImport() {

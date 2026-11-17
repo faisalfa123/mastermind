@@ -221,6 +221,8 @@ fn handle(app: &Arc<App>, mut req: Request) {
             "/style.css" => Some(secure(Response::from_data(include_bytes!("../web/style.css").to_vec()).with_header(hdr("Content-Type", "text/css; charset=utf-8")), "no-cache")),
             "/app.js" => Some(secure(Response::from_data(include_bytes!("../web/app.js").to_vec()).with_header(hdr("Content-Type", "text/javascript; charset=utf-8")), "no-cache")),
             "/scene.js" => Some(asset(include_bytes!("../web/scene.js"), "text/javascript; charset=utf-8")),
+            "/three.min.js" => Some(asset(include_bytes!("../web/three.min.js"), "text/javascript; charset=utf-8")),
+            "/OrbitControls.js" => Some(asset(include_bytes!("../web/OrbitControls.js"), "text/javascript; charset=utf-8")),
             "/sw.js" => Some(asset(include_bytes!("../web/sw.js"), "text/javascript; charset=utf-8")),
             "/manifest.webmanifest" => Some(asset(include_bytes!("../web/manifest.webmanifest"), "application/manifest+json")),
             "/pixel.ttf" => Some(asset(include_bytes!("../web/pixel.ttf"), "font/ttf")),
