@@ -1,15 +1,33 @@
 //! Read-only scan of existing systemd services so they can be adopted into a jail. Never executes anything.
 use serde_json::{json, Value};
 
+pub fn default_app_port(name: &str) -> Option<u16> {
+    let lower = name.to_lowercase();
+    if lower.contains("immich") { Some(2283) }
+    else if lower.contains("nextcloud") { Some(8080) }
+    else if lower.contains("jellyfin") || lower.contains("emby") { Some(8096) }
+    else if lower.contains("plex") { Some(32400) }
+    else if lower.contains("adguard") { Some(3000) }
+    else if lower.contains("pihole") { Some(80) }
+    else if lower.contains("vaultwarden") || lower.contains("bitwarden") { Some(8000) }
+    else if lower.contains("syncthing") { Some(8384) }
+    else if lower.contains("transmission") { Some(9091) }
+    else if lower.contains("qbittorrent") { Some(8080) }
+    else if lower.contains("wireguard") { Some(51820) }
+    else if lower.contains("homeassistant") || lower.contains("home-assistant") { Some(8123) }
+    else if lower.contains("senandung") { Some(8989) }
+    else { None }
+}
+
 /// Pure parser (unit-tested): name + ExecStart + port from a unit file's text.
 pub fn parse_unit(name: &str, text: &str) -> Option<Value> {
     let exec = text.lines().find_map(|l| l.trim().strip_prefix("ExecStart="))?.trim().to_string();
     let port = text.lines().find_map(|l| {
         let l = l.trim();
-        let i = l.find("PORT=").or_else(|| l.find("--port"))?;
+        let i = l.find("PORT=").or_else(|| l.find("--port")).or_else(|| l.find("-p "))?;
         let d: String = l[i..].chars().skip_while(|c| !c.is_ascii_digit()).take_while(char::is_ascii_digit).collect();
         d.parse::<u16>().ok()
-    });
+    }).or_else(|| default_app_port(name));
     Some(json!({"name": name, "exec": exec, "port": port, "source": "sistem"}))
 }
 

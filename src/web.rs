@@ -332,10 +332,20 @@ fn handle(app: &Arc<App>, mut req: Request) {
             (Method::Post, ["external-apps", "import"]) => {
                 let b = read_json(&mut req);
                 let name = b["name"].as_str().unwrap_or("").trim().to_lowercase().replace(' ', "-");
-                let port = b["port"].as_u64().unwrap_or(0) as u16;
+                let mut port = b["port"].as_u64().unwrap_or(0) as u16;
+                if port == 0 {
+                    if let Some(dp) = crate::localscan::default_app_port(&name) {
+                        port = dp;
+                    }
+                }
                 if !ipc::valid_id(&name) { return err(400, "nama aplikasi tidak valid"); }
                 let mut s = app.store.lock().unwrap();
-                if s.state.apps.contains_key(&name) { return err(409, "aplikasi sudah terdaftar"); }
+                if let Some(existing) = s.state.apps.get_mut(&name) {
+                    if port > 0 { existing.port = port; }
+                    s.log("admin", &format!("update-external-app {name} (port {port})"));
+                    s.save().ok();
+                    return json_resp(200, json!({"ok": true, "message": format!("Port aplikasi {name} berhasil diperbarui ke :{port}")}));
+                }
                 s.state.apps.insert(name.clone(), store::Installed {
                     version: "external".into(),
                     sha256: "external".into(),
@@ -353,7 +363,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 });
                 s.log("admin", &format!("import-app {name} (port {port})"));
                 s.save().ok();
-                json_resp(200, json!({"ok": true, "message": format!("Aplikasi {name} berhasil diimpor ke Mastermind")}))
+                json_resp(200, json!({"ok": true, "message": format!("Aplikasi {name} berhasil diimpor ke Mastermind (Port :{port})")}))
             }
             (Method::Post, ["search"]) => {
                 let b = read_json(&mut req);

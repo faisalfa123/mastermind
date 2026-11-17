@@ -83,21 +83,6 @@
 <main id="view"></main>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<!-- PWA Floating Prompt Banner for Mobile -->
-<div id="pwa-banner" class="pwa-banner" hidden>
-  <div class="pwa-banner-content">
-    <div class="pwa-icon">📱</div>
-    <div>
-      <div class="pwa-title">Pasang Mastermind ke Layar Utama</div>
-      <div class="pwa-desc">Akses cepat tanpa bilah peramban di iOS & Android</div>
-    </div>
-  </div>
-  <div class="pwa-banner-actions">
-    <button class="ghost" onclick="document.getElementById('pwa-banner').hidden = true">Nanti</button>
-    <button class="good" onclick="window.triggerPwaInstall()">Pasang</button>
-  </div>
-</div>
-
 <!-- Modal dialog konfirmasi / 2FA -->
 <dialog id="dlg">
   <form method="dialog" id="dlgform">

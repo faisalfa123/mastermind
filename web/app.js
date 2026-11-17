@@ -112,7 +112,17 @@ let csrf = '', tab = 'apps', timer = null;
 function h(tag, attrs, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
-    if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+    if (k === 'class') {
+      e.className = v;
+    } else if (k === 'style' && typeof v === 'object') {
+      Object.assign(e.style, v);
+    } else if (k.startsWith('on')) {
+      e.addEventListener(k.slice(2), v);
+    } else if (k === 'hidden') {
+      e.hidden = Boolean(v);
+    } else {
+      e.setAttribute(k, v);
+    }
   }
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
   return e;
@@ -394,17 +404,17 @@ function appCard(a) {
 
   // Tab 1: Status & Sparkline
   const sparkBars = [25, 40, 20, 55, 30, 45, 60, 35, 50].map((ht, idx) =>
-    h('div', { class: 's-bar' + (idx === 8 ? ' active' : ''), style: `height: ${ht}%;` })
+    h('div', { class: 's-bar' + (idx === 8 ? ' active' : ''), style: { height: `${ht}%` } })
   );
   const sparkBox = h('div', { class: 'sparkline-box' },
     h('div', { class: 'sparkline-header' },
       h('span', { class: 'dim' }, 'Beban CPU Cgroup'),
-      h('span', { style: 'color: var(--accent); font-weight: bold;' }, a.status === 'active' ? '1.2% Aktif' : '0% Idle')
+      h('span', { style: { color: 'var(--accent)', fontWeight: 'bold' } }, a.status === 'active' ? '1.2% Aktif' : '0% Idle')
     ),
     h('div', { class: 'sparkline-bars' }, ...sparkBars)
   );
 
-  const tabStatusContent = h('div', {},
+  const tabStatusContent = h('div', { class: 'tab-pane' },
     sparkBox,
     h('p', { class: 's-' + a.status }, h('span', { class: 'led' }), a.status.toUpperCase(), ` \u2022 ${inst.version}`),
     (a.mem_mb != null ? h('p', {}, `RAM ${a.mem_mb}/${a.memory_max_mb} MB`) : null),
@@ -412,20 +422,20 @@ function appCard(a) {
   );
 
   // Tab 2: Logs
-  const logBox = h('div', { style: 'background: var(--panel2); border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px; max-height: 140px; overflow-y: auto; white-space: pre-wrap;' }, 'Memuat ringkasan log...');
-  const tabLogsContent = h('div', { style: 'display: none;' }, logBox);
+  const logBox = h('div', { style: { background: 'var(--panel2)', borderRadius: '6px', padding: '8px', fontFamily: 'monospace', fontSize: '11px', maxHeight: '140px', overflowY: 'auto', whiteSpace: 'pre-wrap' } }, 'Memuat ringkasan log...');
+  const tabLogsContent = h('div', { class: 'tab-pane', hidden: true }, logBox);
 
   // Tab 3: Diagnostik
-  const tabDiagContent = h('div', { style: 'display: none; font-size: 11px; background: var(--panel); padding: 10px; border-radius: 6px;' },
-    h('div', { style: 'display: flex; justify-content: space-between; margin-bottom: 4px;' },
+  const tabDiagContent = h('div', { class: 'tab-pane', hidden: true, style: { fontSize: '11px', background: 'var(--panel)', padding: '10px', borderRadius: '6px' } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
       h('span', { class: 'dim' }, 'Jail Isolasi Sandbox:'),
       h('span', { class: 'good' }, `/var/lib/mastermind/${a.id} (Terkunci ✓)`)
     ),
-    h('div', { style: 'display: flex; justify-content: space-between; margin-bottom: 4px;' },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
       h('span', { class: 'dim' }, 'Auto-Start saat Boot:'),
       h('span', { class: a.autostart !== false ? 'good' : 'dim' }, a.autostart !== false ? 'Aktif (Enabled)' : 'Non-Aktif')
     ),
-    h('div', { style: 'display: flex; justify-content: space-between;' },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between' } },
       h('span', { class: 'dim' }, 'Status Port:'),
       h('span', { class: 'good' }, `:${a.port} Normal`)
     )
@@ -435,9 +445,9 @@ function appCard(a) {
     tabStatusBtn.classList.toggle('active', name === 'status');
     tabLogsBtn.classList.toggle('active', name === 'logs');
     tabDiagBtn.classList.toggle('active', name === 'diag');
-    tabStatusContent.style.display = (name === 'status') ? 'block' : 'none';
-    tabLogsContent.style.display = (name === 'logs') ? 'block' : 'none';
-    tabDiagContent.style.display = (name === 'diag') ? 'block' : 'none';
+    tabStatusContent.hidden = (name !== 'status');
+    tabLogsContent.hidden = (name !== 'logs');
+    tabDiagContent.hidden = (name !== 'diag');
 
     if (name === 'logs') {
       api(`apps/${a.id}/logs`, 'GET').then(r => {
@@ -857,12 +867,12 @@ async function renderCity() {
   try { d = await api('apps'); } catch (_) {}
   const installedApps = d.apps.filter(a => a.installed);
 
-  const canvasEl = h('canvas', { id: 'cityCanvas', width: '800', height: '400' });
+  const canvasEl = h('canvas', { id: 'cityCanvas', width: '900', height: '460' });
   const canvasWrap = h('div', { class: 'city-canvas-wrapper' },
     canvasEl,
     h('div', { class: 'city-badge' },
       h('span', { class: 'dot' }),
-      'Kota Mastermind • 60 FPS Client-Side Canvas'
+      'Kota Isometrik Mastermind (The Sims 1 POV) • 60 FPS Canvas'
     ),
     h('div', { class: 'city-instructions' }, 'Klik gedung untuk membuka kontrol aplikasi')
   );
@@ -870,63 +880,185 @@ async function renderCity() {
   const cityCard = h('div', { class: 'card city-container' },
     h('div', {},
       h('h3', {}, 'KOTA METROPOLITAN MASTERMIND'),
-      h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Mastermind beroperasi sebagai Markas Kepolisian & Pengawas Sistem, setiap aplikasi yang berjalan memiliki gedung otonom tersendiri.')
+      h('p', { class: 'dim', style: { fontSize: '11px' } }, 'Mastermind beroperasi sebagai Markas Kepolisian & Pengawas Sistem dengan model grid isometrik 2:1 modern yang hemat CPU.')
     ),
     canvasWrap
   );
 
   view.replaceChildren(...[topBar, cityCard].filter(Boolean));
 
-  // Initialize Canvas Logic
+  // Initialize Isometric Canvas Engine
   const ctx = canvasEl.getContext('2d');
   const resizeCanvas = () => {
     const rect = canvasWrap.getBoundingClientRect();
-    canvasEl.width = rect.width || 800;
-    canvasEl.height = 380;
+    canvasEl.width = rect.width || 900;
+    canvasEl.height = 440;
   };
   resizeCanvas();
 
-  const buildings = [
-    { id: 'mastermind', name: 'Mastermind HQ', icon: '🏛️', x: 30, width: 95, height: 180, color: '#27372d', roofColor: '#8ac275', port: 8443, isHQ: true }
+  const tileW = 60;
+  const tileH = 30;
+
+  function toIso(x, y) {
+    const originX = canvasEl.width / 2;
+    const originY = 100;
+    return {
+      isoX: originX + (x - y) * (tileW / 2),
+      isoY: originY + (x + y) * (tileH / 2)
+    };
+  }
+
+  // 10x10 Grid Map: 0 = grass, 1 = road, 5 = zen trees
+  const grid = [
+    [0, 5, 0, 1, 0, 0, 1, 0, 5, 0],
+    [5, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 5],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+    [0, 5, 0, 1, 0, 0, 1, 0, 5, 0],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
   ];
 
-  installedApps.forEach((a, idx) => {
-    buildings.push({
-      id: a.id,
-      name: a.id,
-      icon: a.id === 'senandung' ? '🎵' : '🏢',
-      x: 150 + idx * 110,
-      width: 85,
-      height: 120 + ((idx * 27) % 50),
-      color: '#1f2b23',
-      roofColor: '#63a863',
-      port: a.port,
-      isHQ: false,
-      app: a,
-    });
+  // Assign building slots
+  const buildingSlots = [
+    { gx: 1, gy: 1, id: 'mastermind', name: 'HQ Polisi', icon: '🏛️', floors: 4, mainColor: '#1f2b23', roofColor: '#8ac275', isHQ: true },
+    { gx: 1, gy: 5, id: 'senandung', name: 'senandung', icon: '🎵', floors: 3, mainColor: '#27372d', roofColor: '#63a863', isHQ: false },
+    { gx: 8, gy: 2, id: 'immich', name: 'immich', icon: '🖼️', floors: 3, mainColor: '#27372d', roofColor: '#4255ff', isHQ: false },
+    { gx: 8, gy: 5, id: 'app3', name: 'app', icon: '🏢', floors: 2, mainColor: '#27372d', roofColor: '#e8d089', isHQ: false },
+    { gx: 4, gy: 1, id: 'app4', name: 'app', icon: '📦', floors: 3, mainColor: '#27372d', roofColor: '#d99166', isHQ: false },
+  ];
+
+  const activeBuildings = [buildingSlots[0]]; // Always HQ
+  installedApps.forEach((app, idx) => {
+    const slotIdx = 1 + idx;
+    if (slotIdx < buildingSlots.length) {
+      const slot = { ...buildingSlots[slotIdx] };
+      slot.id = app.id;
+      slot.name = app.id;
+      slot.icon = app.id === 'senandung' ? '🎵' : (app.id.includes('immich') ? '🖼️' : '🏢');
+      slot.app = app;
+      activeBuildings.push(slot);
+    }
   });
 
-  const vehicles = [
-    { x: 0, speed: 1.5, color: '#8ac275' },
-    { x: 220, speed: 1.1, color: '#d99166' },
-    { x: 450, speed: -1.3, color: '#e8d089' }
+  // Animated Vehicles
+  const cars = [
+    { x: 3, y: 0, speed: 0.04, axis: 'y', dir: 1, color: '#8ac275' },
+    { x: 6, y: 9, speed: 0.035, axis: 'y', dir: -1, color: '#d99166' },
+    { x: 0, y: 3, speed: 0.045, axis: 'x', dir: 1, color: '#e8d089' },
+    { x: 9, y: 6, speed: 0.04, axis: 'x', dir: -1, color: '#63a863' }
   ];
 
-  const workers = [
-    { x: 50, speed: 0.4, dir: 1 },
-    { x: 180, speed: -0.3, dir: -1 },
-    { x: 280, speed: 0.5, dir: 1 }
+  // Animated Citizens (Sims)
+  const citizens = [
+    { x: 2.2, y: 3.2, speed: 0.015, dir: 1 },
+    { x: 5.5, y: 5.5, speed: -0.012, dir: -1 },
+    { x: 3.5, y: 1.5, speed: 0.018, dir: 1 }
   ];
 
+  function drawIsoTile(gx, gy, color, border) {
+    const p = toIso(gx, gy);
+    ctx.beginPath();
+    ctx.moveTo(p.isoX, p.isoY);
+    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2);
+    ctx.lineTo(p.isoX, p.isoY + tileH);
+    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (border) {
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+  }
+
+  function drawIsoBuilding(b) {
+    const p = toIso(b.gx, b.gy);
+    const height = b.floors * 24;
+
+    // Left wall
+    ctx.beginPath();
+    ctx.moveTo(p.isoX - tileW / 2, p.isoY + tileH / 2);
+    ctx.lineTo(p.isoX, p.isoY + tileH);
+    ctx.lineTo(p.isoX, p.isoY + tileH - height);
+    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2 - height);
+    ctx.closePath();
+    ctx.fillStyle = '#17221b';
+    ctx.fill();
+    ctx.strokeStyle = '#27372d';
+    ctx.stroke();
+
+    // Right wall
+    ctx.beginPath();
+    ctx.moveTo(p.isoX, p.isoY + tileH);
+    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2);
+    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2 - height);
+    ctx.lineTo(p.isoX, p.isoY + tileH - height);
+    ctx.closePath();
+    ctx.fillStyle = b.mainColor;
+    ctx.fill();
+    ctx.strokeStyle = '#34473b';
+    ctx.stroke();
+
+    // Roof diamond
+    ctx.beginPath();
+    ctx.moveTo(p.isoX, p.isoY - height);
+    ctx.lineTo(p.isoX + tileW / 2, p.isoY + tileH / 2 - height);
+    ctx.lineTo(p.isoX, p.isoY + tileH - height);
+    ctx.lineTo(p.isoX - tileW / 2, p.isoY + tileH / 2 - height);
+    ctx.closePath();
+    ctx.fillStyle = b.roofColor;
+    ctx.fill();
+    ctx.strokeStyle = '#8ac275';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Windows
+    for (let f = 0; f < b.floors; f++) {
+      for (let c = 0; c < 2; c++) {
+        const wx = p.isoX + 6 + c * 13;
+        const wy = p.isoY + tileH - (f + 1) * 20 + c * 6;
+        ctx.fillStyle = '#e8d089dd';
+        ctx.fillRect(wx, wy, 5, 6);
+      }
+    }
+
+    // Label on roof
+    ctx.fillStyle = '#eaf3eb';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.icon + ' ' + b.name.slice(0, 9), p.isoX, p.isoY - height - 6);
+  }
+
+  function drawIsoTree(gx, gy) {
+    const p = toIso(gx, gy);
+    ctx.fillStyle = '#483a4b';
+    ctx.fillRect(p.isoX - 2, p.isoY + tileH / 2 - 6, 4, 8);
+    ctx.beginPath();
+    ctx.arc(p.isoX, p.isoY + tileH / 2 - 14, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#3b5243';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.isoX, p.isoY + tileH / 2 - 17, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#63a863';
+    ctx.fill();
+  }
+
+  // Click on Building Detection
   canvasEl.onclick = (e) => {
     const rect = canvasEl.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
-    const roadY = canvasEl.height - 70;
 
-    buildings.forEach(b => {
-      const by = roadY - b.height;
-      if (cx >= b.x && cx <= b.x + b.width && cy >= by && cy <= roadY) {
+    activeBuildings.forEach(b => {
+      const p = toIso(b.gx, b.gy);
+      const topY = p.isoY - (b.floors * 24);
+      const botY = p.isoY + tileH;
+      if (cx >= p.isoX - tileW / 2 && cx <= p.isoX + tileW / 2 && cy >= topY && cy <= botY) {
         if (b.isHQ) {
           toast('Markas Kepolisian Mastermind: Sistem berjalan normal.');
         } else if (b.app) {
@@ -943,102 +1075,69 @@ async function renderCity() {
     tick++;
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // Sky
-    const grad = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-    grad.addColorStop(0, '#0d130f');
-    grad.addColorStop(1, '#151d18');
-    ctx.fillStyle = grad;
+    // Deep Dark Zen Background
+    ctx.fillStyle = '#0e1511';
     ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // Moon / Lantern
-    ctx.fillStyle = '#e8d08922';
-    ctx.beginPath();
-    ctx.arc(canvasEl.width - 50, 40, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    const roadY = canvasEl.height - 70;
-
-    // Sidewalk & Road
-    ctx.fillStyle = '#1c261f';
-    ctx.fillRect(0, roadY, canvasEl.width, 16);
-    ctx.fillStyle = '#101612';
-    ctx.fillRect(0, roadY + 16, canvasEl.width, 54);
-
-    // Dashed center line
-    ctx.strokeStyle = '#e8d08944';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([12, 10]);
-    ctx.beginPath();
-    ctx.moveTo(0, roadY + 42);
-    ctx.lineTo(canvasEl.width, roadY + 42);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Draw Buildings
-    buildings.forEach(b => {
-      const by = roadY - b.height;
-      ctx.fillStyle = b.color;
-      ctx.fillRect(b.x, by, b.width, b.height);
-      ctx.strokeStyle = '#3b5243';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(b.x, by, b.width, b.height);
-
-      ctx.fillStyle = b.roofColor;
-      ctx.fillRect(b.x, by, b.width, 7);
-
-      ctx.fillStyle = '#eaf3eb';
-      ctx.font = 'bold 11px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(b.icon + ' ' + b.name.slice(0, 8), b.x + b.width / 2, by + 22);
-
-      // Windows
-      const rows = Math.floor((b.height - 40) / 18);
-      const cols = Math.floor((b.width - 16) / 16);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const wx = b.x + 10 + c * 16;
-          const wy = by + 34 + r * 18;
-          const isLit = (Math.sin(tick * 0.03 + (b.x + wx + wy)) > -0.2);
-          ctx.fillStyle = isLit ? '#e8d089dd' : '#141e17';
-          ctx.fillRect(wx, wy, 9, 10);
+    // 1. Draw Grid Tiles (Roads & Grass)
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        const t = grid[y][x];
+        if (t === 1) {
+          drawIsoTile(x, y, '#19221d', '#28362d');
+        } else {
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#131d17' : '#17241c', '#202f25');
         }
       }
+    }
 
-      // HQ Radar Beacon
-      if (b.isHQ) {
-        const beaconAngle = (tick * 0.1) % (Math.PI * 2);
-        ctx.fillStyle = Math.sin(beaconAngle) > 0 ? '#63a863' : '#8ac275';
-        ctx.beginPath();
-        ctx.arc(b.x + b.width / 2, by - 8, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-
-    // Draw Workers
-    workers.forEach(w => {
-      w.x += w.speed * w.dir;
-      if (w.x > canvasEl.width - 20) w.dir = -1;
-      if (w.x < 10) w.dir = 1;
-      const bob = Math.sin(tick * 0.2 + w.x) * 1.5;
-      ctx.fillStyle = '#9ab3a0';
-      ctx.fillRect(w.x, roadY + 4 + bob, 4, 7);
+    // 2. Draw Citizens (Sims)
+    citizens.forEach(c => {
+      c.x += c.speed * c.dir;
+      if (c.x > 8.5) c.dir = -1;
+      if (c.x < 1.5) c.dir = 1;
+      const cp = toIso(c.x, c.y);
+      const bob = Math.sin(tick * 0.2 + c.x * 10) * 1.5;
       ctx.fillStyle = '#eaf3eb';
-      ctx.fillRect(w.x, roadY + 1 + bob, 4, 3);
+      ctx.fillRect(cp.isoX - 2, cp.isoY - 9 + bob, 4, 3);
+      ctx.fillStyle = '#8ac275';
+      ctx.fillRect(cp.isoX - 2, cp.isoY - 6 + bob, 4, 5);
     });
 
-    // Draw Vehicles
-    vehicles.forEach(v => {
-      v.x += v.speed;
-      if (v.speed > 0 && v.x > canvasEl.width + 30) v.x = -30;
-      if (v.speed < 0 && v.x < -30) v.x = canvasEl.width + 30;
-      const vy = v.speed > 0 ? roadY + 22 : roadY + 36;
-      ctx.fillStyle = v.color;
-      ctx.fillRect(v.x, vy, 22, 10);
-      ctx.fillStyle = '#151d18';
-      ctx.fillRect(v.x + 5, vy - 4, 12, 5);
-      ctx.fillStyle = '#e8d089';
-      ctx.fillRect(v.speed > 0 ? v.x + 21 : v.x - 1, vy + 2, 2, 3);
+    // 3. Draw Vehicles
+    cars.forEach(car => {
+      if (car.axis === 'y') {
+        car.y += car.speed * car.dir;
+        if (car.y > 9.5) car.y = 0;
+        if (car.y < 0) car.y = 9.5;
+      } else {
+        car.x += car.speed * car.dir;
+        if (car.x > 9.5) car.x = 0;
+        if (car.x < 0) car.x = 9.5;
+      }
+      const p = toIso(car.x, car.y);
+      ctx.fillStyle = car.color;
+      ctx.beginPath();
+      ctx.moveTo(p.isoX, p.isoY - 3);
+      ctx.lineTo(p.isoX + 9, p.isoY + 1);
+      ctx.lineTo(p.isoX, p.isoY + 5);
+      ctx.lineTo(p.isoX - 9, p.isoY + 1);
+      ctx.closePath();
+      ctx.fill();
     });
+
+    // 4. Draw Trees & Buildings (Sorted by Iso Depth X+Y)
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        if (grid[y][x] === 5) {
+          drawIsoTree(x, y);
+        }
+        const b = activeBuildings.find(item => item.gx === x && item.gy === y);
+        if (b) {
+          drawIsoBuilding(b);
+        }
+      }
+    }
 
     cityAnimId = requestAnimationFrame(animateCity);
   }
@@ -1176,9 +1275,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
   const pwaBtn = $('#pwa-install-btn');
-  const pwaBanner = $('#pwa-banner');
   if (pwaBtn) pwaBtn.hidden = false;
-  if (pwaBanner && !sessionStorage.getItem('pwa-dismissed')) pwaBanner.hidden = false;
 });
 
 window.triggerPwaInstall = async () => {
@@ -1190,9 +1287,7 @@ window.triggerPwaInstall = async () => {
     }
     deferredPrompt = null;
     const pwaBtn = $('#pwa-install-btn');
-    const pwaBanner = $('#pwa-banner');
     if (pwaBtn) pwaBtn.hidden = true;
-    if (pwaBanner) pwaBanner.hidden = true;
   } else {
     // Petunjuk manual iOS Safari
     alert("Instalasi PWA ke HP (iOS / Android):\n\n1. iPhone/iPad (Safari): Tekan tombol Bagikan (Share) ⎋ di bawah, lalu pilih 'Tambahkan ke Layar Utama' (Add to Home Screen) ⊞.\n2. Android (Chrome): Buka menu titik tiga ⋮ di pojok kanan atas, lalu pilih 'Pasang Aplikasi' / 'Install App'.");

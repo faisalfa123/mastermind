@@ -35,16 +35,28 @@ fn unit_name(id: &str) -> String { format!("mastermind-{id}.service") }
 fn bin_dir(cfg: &Config, id: &str) -> PathBuf { Path::new(&cfg.apps_dir).join(id) }
 fn bin_path(cfg: &Config, id: &str) -> PathBuf { bin_dir(cfg, id).join("bin") }
 
+fn resolve_unit_name(cfg: &Config, id: &str) -> String {
+    let mm = unit_name(id);
+    let mm_path = Path::new(&cfg.units_dir).join(&mm);
+    if mm_path.exists() {
+        mm
+    } else {
+        // Cek apakah service asli ada di sistem
+        format!("{id}.service")
+    }
+}
+
 pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
     match cmd {
         Command::Install(id) => install(cfg, &id),
         Command::Remove(id) => remove(cfg, &id),
-        Command::Start(id) => systemctl(cfg, &["start", &unit_name(&id)]).map(|_| String::new()),
-        Command::Stop(id) => systemctl(cfg, &["stop", &unit_name(&id)]).map(|_| String::new()),
-        Command::Restart(id) => systemctl(cfg, &["restart", &unit_name(&id)]).map(|_| String::new()),
+        Command::Start(id) => systemctl(cfg, &["start", &resolve_unit_name(cfg, &id)]).map(|_| String::new()),
+        Command::Stop(id) => systemctl(cfg, &["stop", &resolve_unit_name(cfg, &id)]).map(|_| String::new()),
+        Command::Restart(id) => systemctl(cfg, &["restart", &resolve_unit_name(cfg, &id)]).map(|_| String::new()),
         Command::Status(id) => {
             if cfg.dry_run { return Ok("dry-run".into()); }
-            let o = std::process::Command::new("systemctl").args(["is-active", &unit_name(&id)]).output().map_err(|e| e.to_string())?;
+            let unit = resolve_unit_name(cfg, &id);
+            let o = std::process::Command::new("systemctl").args(["is-active", &unit]).output().map_err(|e| e.to_string())?;
             Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
         }
         Command::Verify(id) => Ok(sha(&read_nofollow(&bin_path(cfg, &id), 96 << 20)?)),
@@ -175,8 +187,9 @@ fn remove(cfg: &Config, id: &str) -> Result<String, String> {
 
 fn logs(cfg: &Config, id: &str) -> Result<String, String> {
     if cfg.dry_run { return Ok("dry-run logs".into()); }
+    let unit = resolve_unit_name(cfg, id);
     let o = std::process::Command::new("journalctl")
-        .args(["-u", &unit_name(id), "-n", "30", "--no-pager"])
+        .args(["-u", &unit, "-n", "30", "--no-pager"])
         .output().map_err(|e| e.to_string())?;
     let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
     if out.is_empty() {
