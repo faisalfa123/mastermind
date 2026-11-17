@@ -878,6 +878,58 @@ async function renderSites() {
    RENDER & ROUTER
    ========================================================================== */
 let cityAnimId = null;
+let sfxEnabled = localStorage.getItem('mm-sfx') === '1';
+let audioCtx = null;
+
+function playSfx(type) {
+  if (!sfxEnabled) return;
+  try {
+    if (!audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) audioCtx = new AudioContextClass();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'type') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(450 + Math.random() * 120, now);
+      gain.gain.setValueAtTime(0.015, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + 0.025);
+      osc.start(now);
+      osc.stop(now + 0.025);
+    } else if (type === 'chime') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(659.25, now + 0.07);
+      osc.frequency.setValueAtTime(783.99, now + 0.14);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    } else if (type === 'beep') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.02, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + 0.04);
+      osc.start(now);
+      osc.stop(now + 0.04);
+    } else if (type === 'step') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140 + Math.random() * 30, now);
+      gain.gain.setValueAtTime(0.015, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + 0.02);
+      osc.start(now);
+      osc.stop(now + 0.02);
+    }
+  } catch (_) {}
+}
 
 async function renderCity() {
   if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
@@ -886,22 +938,35 @@ async function renderCity() {
   try { d = await api('apps'); } catch (_) {}
   const installedApps = d.apps.filter(a => a.installed);
 
-  const canvasEl = h('canvas', { id: 'cityCanvas', width: '900', height: '480' });
+  const sfxBtn = h('button', {
+    class: 'ghost',
+    style: { padding: '3px 8px', fontSize: '11px', cursor: 'pointer' },
+    onclick: () => {
+      sfxEnabled = !sfxEnabled;
+      localStorage.setItem('mm-sfx', sfxEnabled ? '1' : '0');
+      sfxBtn.textContent = sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI';
+      toast(sfxEnabled ? 'Efek Suara Retro Diaktifkan' : 'Efek Suara Dinonaktifkan');
+      if (sfxEnabled) playSfx('chime');
+    }
+  }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
+
+  const canvasEl = h('canvas', { id: 'cityCanvas', width: '920', height: '500' });
   const canvasWrap = h('div', { class: 'city-canvas-wrapper' },
     canvasEl,
-    h('div', { class: 'city-badge' },
+    h('div', { class: 'city-badge', style: { display: 'flex', alignItems: 'center', gap: '8px' } },
       h('span', { class: 'dot' }),
-      'Gedung Kantor Mastermind (The Sims Interior) • Fixed 24 FPS'
+      'Hermes3D Workspace • 4-Zone Virtual Office (Fixed 24 FPS)',
+      sfxBtn
     ),
-    h('div', { class: 'city-instructions' }, 'Klik pegawai atau meja untuk kontrol cepat (Buka App / Restart / Stop)')
+    h('div', { class: 'city-instructions' }, '💡 Klik Pegawai (App), Rak Server (Sistem), atau Meja Rapat (Standup Report)')
   );
 
   const cityCard = h('div', { class: 'card city-container' },
     h('div', {},
-      h('h3', {}, '🏢 KANTOR PUSAT OPERASIONAL MASTERMIND'),
-      h('p', { class: 'dim', style: 'font-size: 11px;' },
-        'Setiap pegawai mewakili sebuah aplikasi. Saat bekerja aktif, pegawai mengetik di Meja Kerja. ' +
-        'Saat service mati, pegawai tidur di Ruang Istirahat (Kamar Tidur). Saat restart, muncul indikator loading!'
+      h('h3', {}, '🏢 KANTOR VIRTUAL HERMES3D MASTERMIND'),
+      h('p', { class: 'dim', style: { fontSize: '11px;' } },
+        'Setiap service aplikasi hidup sebagai pegawai aktif di kantor virtual 2.5D retro. ' +
+        'Zona Kerja: Meja PC • Zona Server: Rak Sistem (Restart) • Zona Huddle: Meja Rapat Standup • Zona Lounge: Kopi & Istirahat.'
       )
     ),
     canvasWrap
@@ -909,77 +974,92 @@ async function renderCity() {
 
   view.replaceChildren(...[topBar, cityCard].filter(Boolean));
 
-  // Initialize The Sims 1 Office Isometric Engine
+  // Initialize Hermes3D 2.5D Isometric Engine
   const ctx = canvasEl.getContext('2d');
   const resizeCanvas = () => {
     const rect = canvasWrap.getBoundingClientRect();
-    canvasEl.width = rect.width || 900;
-    canvasEl.height = 460;
+    canvasEl.width = rect.width || 920;
+    canvasEl.height = 490;
   };
   resizeCanvas();
 
-  const tileW = 56;
-  const tileH = 28;
+  const tileW = 54;
+  const tileH = 27;
 
   function toIso(x, y) {
     const originX = canvasEl.width / 2;
-    const originY = 80;
+    const originY = 70;
     return {
       isoX: originX + (x - y) * (tileW / 2),
       isoY: originY + (x + y) * (tileH / 2)
     };
   }
 
-  // Office Grid: 10x10 tiles
-  // X: 0..4 = Work Area (Meja PC)
-  // X: 5 = Hallway / Corridor Divider
-  // X: 6..9 = Breakroom & Bedroom (Tempat Tidur & Sofa)
-  const officeDesks = [
-    { gx: 1, gy: 2, app: null, title: 'Meja Mastermind HQ (Kernel)' },
-    { gx: 3, gy: 2, app: null },
-    { gx: 1, gy: 5, app: null },
-    { gx: 3, gy: 5, app: null },
-    { gx: 1, gy: 8, app: null },
-    { gx: 3, gy: 8, app: null }
+  // Layout Grid 12x10:
+  // - Kiri-Atas (X: 0..5, Y: 0..4)   : WORKSTATIONS (Meja Kerja PC)
+  // - Kanan-Atas (X: 6..11, Y: 0..4) : SERVER ROOM (Rak Server & Pemeliharaan)
+  // - Kiri-Bawah (X: 0..5, Y: 5..9)  : HUDDLE TABLE (Meja Rapat Konferensi)
+  // - Kanan-Bawah (X: 6..11, Y: 5..9): PANTRY & LOUNGE (Kopi & Kamar Tidur)
+
+  const workstations = [
+    { gx: 1, gy: 1, title: 'Meja Mastermind HQ' },
+    { gx: 3, gy: 1 },
+    { gx: 1, gy: 3 },
+    { gx: 3, gy: 3 },
+    { gx: 5, gy: 1 },
+    { gx: 5, gy: 3 }
   ];
 
-  const officeBeds = [
-    { gx: 7, gy: 2, occupant: null },
-    { gx: 9, gy: 2, occupant: null },
-    { gx: 7, gy: 5, occupant: null },
-    { gx: 9, gy: 5, occupant: null },
-    { gx: 7, gy: 8, occupant: null },
-    { gx: 9, gy: 8, occupant: null }
+  const serverRacks = [
+    { gx: 8, gy: 1, name: 'Rack Alpha (Cgroups)' },
+    { gx: 9, gy: 1, name: 'Rack Beta (Systemd)' },
+    { gx: 10, gy: 1, name: 'Rack Gamma (IPC)' }
   ];
 
-  // Map employees
+  const huddleChairs = [
+    { gx: 2, gy: 6 },
+    { gx: 3, gy: 6 },
+    { gx: 4, gy: 6 },
+    { gx: 2, gy: 8 },
+    { gx: 4, gy: 8 }
+  ];
+
+  const loungeBeds = [
+    { gx: 8, gy: 7 },
+    { gx: 10, gy: 7 },
+    { gx: 8, gy: 9 },
+    { gx: 10, gy: 9 }
+  ];
+
+  // Map Employees (Service Apps)
   const employees = [];
   // Pegawai 0: Mastermind Chief (Selalu Aktif)
   employees.push({
     id: 'mastermind',
-    name: 'Mastermind HQ',
+    name: 'Mastermind',
     status: 'active',
-    deskGx: officeDesks[0].gx,
-    deskGy: officeDesks[0].gy,
-    bedGx: officeBeds[0].gx,
-    bedGy: officeBeds[0].gy,
-    curX: officeDesks[0].gx,
-    curY: officeDesks[0].gy,
-    targetX: officeDesks[0].gx,
-    targetY: officeDesks[0].gy,
+    deskGx: workstations[0].gx,
+    deskGy: workstations[0].gy,
+    curX: workstations[0].gx,
+    curY: workstations[0].gy,
+    targetX: workstations[0].gx,
+    targetY: workstations[0].gy,
     color: '#8ac275',
     hairColor: '#2d3748',
     isHQ: true,
     restarting: false,
-    port: 8443
+    port: 8443,
+    bubble: 'Isolasi Cgroups Aman ✓',
+    bubbleTimer: 160
   });
 
   installedApps.forEach((app, idx) => {
-    const dIdx = (idx + 1) % officeDesks.length;
-    const bIdx = (idx + 1) % officeBeds.length;
+    const wsIdx = (idx + 1) % workstations.length;
+    const bedIdx = (idx + 1) % loungeBeds.length;
     const isAct = app.status === 'active';
-    const desk = officeDesks[dIdx];
-    const bed = officeBeds[bIdx];
+    const desk = workstations[wsIdx];
+    const bed = loungeBeds[bedIdx];
+
     const emp = {
       id: app.id,
       name: app.id,
@@ -994,36 +1074,80 @@ async function renderCity() {
       curY: isAct ? desk.gy : bed.gy,
       targetX: isAct ? desk.gx : bed.gx,
       targetY: isAct ? desk.gy : bed.gy,
-      color: idx % 3 === 0 ? '#4255ff' : idx % 3 === 1 ? '#d99166' : '#63a863',
+      color: idx % 4 === 0 ? '#4255ff' : idx % 4 === 1 ? '#d99166' : idx % 4 === 2 ? '#63a863' : '#e53e3e',
       hairColor: idx % 2 === 0 ? '#1f2937' : '#92400e',
       isHQ: false,
-      restarting: false
+      restarting: false,
+      bubble: '',
+      bubbleTimer: 0
     };
     employees.push(emp);
   });
 
-  // Fast Action Popup
-  let selectedEmp = null;
-  canvasEl.onclick = (e) => {
-    const rect = canvasEl.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
+  // Modal Popups for Interactive Hermes3D Office
+  function showStandupModal() {
+    playSfx('beep');
+    let modal = document.getElementById('standup-modal');
+    if (modal) modal.remove();
 
-    let hit = null;
-    employees.forEach(emp => {
-      const p = toIso(emp.curX, emp.curY);
-      if (Math.hypot(cx - p.isoX, cy - (p.isoY - 14)) < 24) {
-        hit = emp;
-      }
-    });
+    const rows = employees.map(e => h('tr', {},
+      h('td', { style: 'font-weight: bold;' }, e.name),
+      h('td', {}, h('span', { class: 'tag ' + (e.status === 'active' ? 'ok-badge' : 's-stopped') }, e.status.toUpperCase())),
+      h('td', { style: 'font-family: monospace; color: var(--accent);' }, e.port ? `:${e.port}` : '-'),
+      h('td', { class: 'dim', style: 'font-size: 11px;' }, e.status === 'active' ? 'Bekerja normal di meja' : 'Tidur di kamar istirahat')
+    ));
 
-    if (hit) {
-      selectedEmp = hit;
-      showEmpQuickMenu(hit);
-    }
-  };
+    modal = h('div', { id: 'standup-modal', class: 'term-modal' },
+      h('div', { class: 'term-window', style: 'max-width: 540px; padding: 18px;' },
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
+          h('h3', { style: 'font-size: 14px; margin: 0;' }, '📋 LAPORAN RAPAT STANDUP KANTOR'),
+          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
+        ),
+        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 10px;' }, 'Ringkasan operasional seluruh armada service app yang bertugas di Mastermind:'),
+        h('table', {},
+          h('tr', {}, h('th', {}, 'PEGAWAI / APP'), h('th', {}, 'STATUS'), h('th', {}, 'PORT'), h('th', {}, 'KONDISI')),
+          ...rows
+        ),
+        h('div', { style: 'margin-top: 14px; text-align: right;' },
+          h('button', { class: 'good', onclick: () => modal.remove() }, 'Tutup Rapat')
+        )
+      )
+    );
+    document.body.appendChild(modal);
+  }
+
+  async function showServerRoomModal() {
+    playSfx('beep');
+    let modal = document.getElementById('server-modal');
+    if (modal) modal.remove();
+
+    let sys = { load: '0.1', mem_total_mb: 2048, mem_avail_mb: 1400, temp_c: 42, uptime_s: 3600 };
+    try { sys = await api('system'); } catch (_) {}
+    const usedMem = sys.mem_total_mb - sys.mem_avail_mb;
+
+    modal = h('div', { id: 'server-modal', class: 'term-modal' },
+      h('div', { class: 'term-window', style: 'max-width: 480px; padding: 18px;' },
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
+          h('h3', { style: 'font-size: 14px; margin: 0;' }, '🖥 RAK SERVER & HARDWARE ODROID C2'),
+          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
+        ),
+        h('div', { style: 'background: var(--panel2); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; margin-bottom: 12px;' },
+          h('div', { style: 'margin-bottom: 6px;' }, `⚡ BEBAN CPU LOAD: ${sys.load}`),
+          h('div', { style: 'margin-bottom: 6px;' }, `🧠 PEMAKAIAN RAM: ${usedMem} / ${sys.mem_total_mb} MB`),
+          h('div', { style: 'margin-bottom: 6px;' }, `🌡 SUHU CHIPSET: ${sys.temp_c != null ? sys.temp_c + '°C' : '-'}`),
+          h('div', {}, `⏱ UPTIME SISTEM: ${Math.floor(sys.uptime_s / 3600)} Jam`)
+        ),
+        h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Ruang server mengelola isolasi systemd slice dan pembatas memori cgroups untuk semua service app.'),
+        h('div', { style: 'margin-top: 14px; text-align: right;' },
+          h('button', { class: 'good', onclick: () => modal.remove() }, 'Tutup Rak')
+        )
+      )
+    );
+    document.body.appendChild(modal);
+  }
 
   function showEmpQuickMenu(emp) {
+    playSfx('beep');
     let modal = document.getElementById('emp-quick-modal');
     if (modal) modal.remove();
 
@@ -1036,22 +1160,24 @@ async function renderCity() {
         acts.push(h('button', { class: 'ghost', onclick: async () => {
           modal.remove();
           emp.status = 'inactive';
-          toast(`Menghentikan ${emp.name}... Pegawai berjalan ke tempat tidur.`);
+          toast(`Menghentikan ${emp.name}... Pegawai berjalan ke kamar istirahat.`);
           await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
           render();
         } }, '⏹ Hentikan (Tidur)'));
         acts.push(h('button', { class: 'good', onclick: async () => {
           modal.remove();
           emp.restarting = true;
-          toast(`Me-restart ${emp.name}... Loading reboot pegawai.`);
+          playSfx('chime');
+          toast(`Me-restart ${emp.name}... Pegawai berjalan ke ruang server untuk pemeliharaan.`);
           await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
-          setTimeout(() => { emp.restarting = false; render(); }, 1600);
-        } }, '🔄 Restart (Reboot)'));
+          setTimeout(() => { emp.restarting = false; render(); }, 1800);
+        } }, '🔄 Restart (Pemeliharaan)'));
       } else {
         acts.push(h('button', { class: 'good', onclick: async () => {
           modal.remove();
           emp.status = 'active';
-          toast(`Menjalankan ${emp.name}... Pegawai bangun & bekerja.`);
+          playSfx('chime');
+          toast(`Menjalankan ${emp.name}... Pegawai bangun & menuju meja kerja.`);
           await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
           render();
         } }, '▶ Mulai (Bekerja)'));
@@ -1070,9 +1196,9 @@ async function renderCity() {
     }
 
     modal = h('div', { id: 'emp-quick-modal', class: 'term-modal' },
-      h('div', { class: 'term-window', style: 'max-width: 380px; padding: 16px;' },
+      h('div', { class: 'term-window', style: 'max-width: 400px; padding: 16px;' },
         h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
-          h('h3', { style: 'font-size: 14px; margin: 0;' }, `👤 Pegawai: ${emp.name}`),
+          h('h3', { style: 'font-size: 14px; margin: 0;' }, `👤 Pegawai App: ${emp.name}`),
           h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
         ),
         h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 8px;' },
@@ -1088,7 +1214,45 @@ async function renderCity() {
     document.body.appendChild(modal);
   }
 
-  // Isometric Drawing Functions
+  // Interactive Click Detection on Canvas
+  canvasEl.onclick = (e) => {
+    const rect = canvasEl.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    // 1. Check Employees click
+    for (const emp of employees) {
+      const p = toIso(emp.curX, emp.curY);
+      if (Math.hypot(cx - p.isoX, cy - (p.isoY - 14)) < 24) {
+        showEmpQuickMenu(emp);
+        return;
+      }
+    }
+
+    // 2. Check Server Racks click (Zona 2)
+    const srvPos = toIso(9, 1);
+    if (Math.hypot(cx - srvPos.isoX, cy - (srvPos.isoY - 20)) < 40) {
+      showServerRoomModal();
+      return;
+    }
+
+    // 3. Check Huddle Table click (Zona 3)
+    const hudPos = toIso(3, 7);
+    if (Math.hypot(cx - hudPos.isoX, cy - hudPos.isoY) < 36) {
+      showStandupModal();
+      return;
+    }
+
+    // 4. Check Coffee Machine (Zona 4)
+    const cofPos = toIso(11, 5);
+    if (Math.hypot(cx - cofPos.isoX, cy - cofPos.isoY) < 26) {
+      playSfx('chime');
+      toast('☕ Mesin Kopi Pantry: Menyeduh kopi hangat untuk para service!');
+      return;
+    }
+  };
+
+  // Isometric Drawing Helpers
   function drawIsoTile(gx, gy, color, border) {
     const p = toIso(gx, gy);
     ctx.beginPath();
@@ -1106,26 +1270,105 @@ async function renderCity() {
     }
   }
 
-  function drawDesk(gx, gy, isOccupied) {
+  function drawWorkstationDesk(gx, gy, isOccupied) {
     const p = toIso(gx, gy);
-    // Desk Surface
-    ctx.fillStyle = '#2c3e35';
-    ctx.fillRect(p.isoX - 14, p.isoY + tileH / 2 - 8, 28, 12);
-    ctx.strokeStyle = '#3d5245';
-    ctx.strokeRect(p.isoX - 14, p.isoY + tileH / 2 - 8, 28, 12);
+    // Desk table
+    ctx.fillStyle = '#2c3b32';
+    ctx.fillRect(p.isoX - 13, p.isoY + tileH / 2 - 8, 26, 12);
+    ctx.strokeStyle = '#3e5246';
+    ctx.strokeRect(p.isoX - 13, p.isoY + tileH / 2 - 8, 26, 12);
 
     // PC Monitor
-    ctx.fillStyle = isOccupied ? '#8ac275' : '#1e2922';
+    ctx.fillStyle = isOccupied ? '#8ac275' : '#1c2620';
     ctx.fillRect(p.isoX - 7, p.isoY + tileH / 2 - 18, 14, 9);
-    // Monitor Stand
+    // Monitor screen glow
+    if (isOccupied) {
+      ctx.fillStyle = '#b7e4a6';
+      ctx.fillRect(p.isoX - 5, p.isoY + tileH / 2 - 16, 10, 5);
+    }
+    // Stand
     ctx.fillStyle = '#4a5568';
     ctx.fillRect(p.isoX - 2, p.isoY + tileH / 2 - 9, 4, 3);
   }
 
+  function drawServerRack(gx, gy, tick) {
+    const p = toIso(gx, gy);
+    const height = 48;
+    // Server tower box
+    ctx.fillStyle = '#18201a';
+    ctx.fillRect(p.isoX - 12, p.isoY - height, 24, height);
+    ctx.strokeStyle = '#2d3a30';
+    ctx.strokeRect(p.isoX - 12, p.isoY - height, 24, height);
+
+    // Front Server Trays & LED blinks
+    for (let i = 0; i < 4; i++) {
+      const sy = p.isoY - height + 6 + i * 10;
+      ctx.fillStyle = '#222d25';
+      ctx.fillRect(p.isoX - 10, sy, 20, 7);
+
+      // Blinking LEDs
+      const isBlink = (tick + i * 12) % 24 < 12;
+      ctx.fillStyle = isBlink ? '#8ac275' : '#4255ff';
+      ctx.fillRect(p.isoX - 8, sy + 2, 3, 3);
+      ctx.fillStyle = (tick + i * 8) % 18 < 9 ? '#e8d089' : '#1f2821';
+      ctx.fillRect(p.isoX - 3, sy + 2, 3, 3);
+    }
+  }
+
+  function drawHuddleTable(tick) {
+    const p = toIso(3, 7);
+    // Conference table ellipse
+    ctx.fillStyle = '#3a4b3f';
+    ctx.beginPath();
+    ctx.ellipse(p.isoX, p.isoY + tileH / 2 - 4, 34, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4d6354';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Tabletop Documents / Hologram
+    ctx.fillStyle = '#e8d089bb';
+    ctx.fillRect(p.isoX - 8, p.isoY + tileH / 2 - 8, 16, 7);
+
+    // Whiteboard stand behind table
+    const wb = toIso(1, 6);
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(wb.isoX - 1, wb.isoY - 30, 2, 30);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(wb.isoX - 14, wb.isoY - 38, 28, 18);
+    ctx.strokeStyle = '#cbd5e0';
+    ctx.strokeRect(wb.isoX - 14, wb.isoY - 38, 28, 18);
+    // Chart lines
+    ctx.fillStyle = '#48bb78';
+    ctx.fillRect(wb.isoX - 10, wb.isoY - 26, 5, 4);
+    ctx.fillRect(wb.isoX - 3, wb.isoY - 30, 5, 8);
+    ctx.fillRect(wb.isoX + 4, wb.isoY - 34, 5, 12);
+  }
+
+  function drawPantryCoffee(tick) {
+    const p = toIso(11, 5);
+    // Counter
+    ctx.fillStyle = '#313d35';
+    ctx.fillRect(p.isoX - 10, p.isoY + tileH / 2 - 8, 20, 14);
+    // Coffee Machine
+    ctx.fillStyle = '#e53e3e';
+    ctx.fillRect(p.isoX - 7, p.isoY + tileH / 2 - 20, 14, 12);
+    // Coffee pot
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(p.isoX - 4, p.isoY + tileH / 2 - 12, 8, 6);
+
+    // Steam Vapor
+    const steamY = (tick % 24) * 0.4;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.arc(p.isoX, p.isoY + tileH / 2 - 24 - steamY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   function drawBed(gx, gy, isOccupied) {
     const p = toIso(gx, gy);
-    // Bed Mattress (Isometric rectangle)
-    ctx.fillStyle = '#2d3748';
+    // Bed frame
+    ctx.fillStyle = '#242e28';
     ctx.fillRect(p.isoX - 12, p.isoY + tileH / 2 - 6, 24, 16);
     // Blanket
     ctx.fillStyle = isOccupied ? '#3182ce' : '#4a5568';
@@ -1136,16 +1379,27 @@ async function renderCity() {
   }
 
   function drawSimEmployee(emp, tick) {
-    // Smooth walking logic between desk & bed
-    if (emp.status === 'active') {
-      emp.targetX = emp.deskGx;
-      emp.targetY = emp.deskGy;
+    // Determine target location based on status & behavior
+    if (emp.restarting) {
+      // Walk to Server Room for repair / reboot
+      emp.targetX = serverRacks[0].gx;
+      emp.targetY = serverRacks[0].gy + 1;
+    } else if (emp.status === 'active') {
+      // Mostly at desk, occasionally standup at huddle
+      if ((tick + emp.port) % 480 > 420) {
+        emp.targetX = huddleChairs[0].gx;
+        emp.targetY = huddleChairs[0].gy;
+      } else {
+        emp.targetX = emp.deskGx;
+        emp.targetY = emp.deskGy;
+      }
     } else {
+      // Inactive: go sleep in lounge bed
       emp.targetX = emp.bedGx;
       emp.targetY = emp.bedGy;
     }
 
-    // Move smoothly towards target
+    // Smooth movement
     const dx = emp.targetX - emp.curX;
     const dy = emp.targetY - emp.curY;
     const dist = Math.hypot(dx, dy);
@@ -1153,12 +1407,13 @@ async function renderCity() {
     if (isWalking) {
       emp.curX += (dx / dist) * 0.04;
       emp.curY += (dy / dist) * 0.04;
+      if (tick % 12 === 0) playSfx('step');
+    } else if (emp.status === 'active' && !emp.restarting && Math.random() < 0.02) {
+      playSfx('type');
     }
 
     const p = toIso(emp.curX, emp.curY);
     const bob = isWalking ? Math.sin(tick * 0.4) * 2 : (emp.status === 'active' ? Math.sin(tick * 0.15) * 0.8 : 0);
-
-    // Sim Citizen Body
     const headY = p.isoY - 14 + bob;
 
     if (emp.status === 'inactive' && !isWalking) {
@@ -1192,15 +1447,19 @@ async function renderCity() {
     ctx.fillRect(p.isoX - 3, headY + 11, 2.5, 5);
     ctx.fillRect(p.isoX + 0.5, headY + 11, 2.5, 5);
 
-    // Head Icons & Mood Plumbob / Restarting Spinner
+    // Status Indicator & Head Icons
     if (emp.restarting) {
-      // Rotating loading indicator
+      // Rotating loading gear/spinner
       ctx.strokeStyle = '#e8d089';
       ctx.lineWidth = 2;
       ctx.beginPath();
       const angle = (tick * 0.3) % (Math.PI * 2);
       ctx.arc(p.isoX, headY - 12, 5, angle, angle + Math.PI * 1.5);
       ctx.stroke();
+
+      ctx.fillStyle = '#e8d089';
+      ctx.font = 'bold 8px monospace';
+      ctx.fillText('REBOOTING', p.isoX, headY - 20);
     } else {
       // Sims 1 Plumbob (Green diamond)
       ctx.fillStyle = emp.status === 'active' ? '#48bb78' : '#e53e3e';
@@ -1213,6 +1472,34 @@ async function renderCity() {
       ctx.fill();
     }
 
+    // Speech / Status Bubble
+    if (emp.status === 'active' && !emp.restarting) {
+      emp.bubbleTimer--;
+      if (emp.bubbleTimer <= 0) {
+        if (Math.random() < 0.25) {
+          emp.bubble = emp.isHQ ? 'Isolasi Normal ✓' : `${emp.name}: Port :${emp.port || 8080} OK`;
+          emp.bubbleTimer = 90; // Tampilkan 90 frame (~3.7 detik)
+        } else {
+          emp.bubble = '';
+          emp.bubbleTimer = 180 + Math.floor(Math.random() * 120);
+        }
+      }
+
+      if (emp.bubble) {
+        ctx.fillStyle = 'rgba(21, 29, 24, 0.9)';
+        ctx.strokeStyle = '#8ac275';
+        ctx.lineWidth = 1;
+        const bWidth = emp.bubble.length * 6 + 12;
+        ctx.fillRect(p.isoX - bWidth / 2, headY - 32, bWidth, 14);
+        ctx.strokeRect(p.isoX - bWidth / 2, headY - 32, bWidth, 14);
+
+        ctx.fillStyle = '#eaf3eb';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(emp.bubble, p.isoX, headY - 22);
+      }
+    }
+
     // Name Label
     ctx.fillStyle = '#eaf3eb';
     ctx.font = 'bold 9px monospace';
@@ -1220,14 +1507,14 @@ async function renderCity() {
     ctx.fillText(emp.name.slice(0, 10), p.isoX, headY + 23);
   }
 
-  // Animation Loop locked at fixed 24 FPS
+  // Animation Loop fixed at 24 FPS
   let tick = 0;
   const ISO_FPS = 24;
   const ISO_INTERVAL = 1000 / ISO_FPS;
   let lastIsoFrame = performance.now();
 
-  function animateSimsOffice(now) {
-    cityAnimId = requestAnimationFrame(animateSimsOffice);
+  function animateHermesOffice(now) {
+    cityAnimId = requestAnimationFrame(animateHermesOffice);
     if (document.hidden) return;
 
     const delta = now - lastIsoFrame;
@@ -1237,65 +1524,80 @@ async function renderCity() {
 
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // Floor Background
-    ctx.fillStyle = '#0d1511';
+    // Deep Dark Ambient Floor Background
+    ctx.fillStyle = '#0a100c';
     ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // 1. Draw Office Floor Grid
+    // 1. Draw 12x10 Floor Tiles by Zone
     for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
-        if (x < 5) {
-          // Work Area (Greenish parquet)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#18241d' : '#1c2b22', '#293a30');
-        } else if (x === 5) {
-          // Glass / Wood Corridor Divider
-          drawIsoTile(x, y, '#131b16', '#223028');
+      for (let x = 0; x < 12; x++) {
+        if (x < 6 && y < 5) {
+          // Zone 1: Workstations (Modern Green Parquet)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#16231b' : '#1a2920', '#25382c');
+        } else if (x >= 6 && y < 5) {
+          // Zone 2: Server Room (Metallic Tech Tile)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#151e22' : '#18242a', '#273840');
+        } else if (x < 6 && y >= 5) {
+          // Zone 3: Huddle Conference (Warm Boardroom Wood)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#212a23' : '#27332a', '#344538');
         } else {
-          // Breakroom / Bedroom (Warm lounge carpet)
-          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#202924' : '#25302a', '#2d3d34');
+          // Zone 4: Pantry & Lounge (Cozy Carpet)
+          drawIsoTile(x, y, ((x + y) % 2 === 0) ? '#232624' : '#2b2e2c', '#383d3a');
         }
       }
     }
 
-    // 2. Room Divider Wall between Work Area & Bedroom
-    for (let wy = 0; wy < 10; wy++) {
-      if (wy === 4 || wy === 5) continue; // Door passage
-      const p = toIso(5, wy);
-      ctx.fillStyle = '#26362d';
-      ctx.fillRect(p.isoX - 1, p.isoY - 18, 3, 24);
+    // 2. Zone Dividers & Hallways
+    for (let x = 0; x < 12; x++) {
+      if (x === 5 || x === 6) continue;
+      const p = toIso(x, 5);
+      ctx.fillStyle = '#1e2d24';
+      ctx.fillRect(p.isoX - tileW / 2, p.isoY - 6, tileW, 4);
     }
 
-    // Room Titles on Canvas
-    const wTitle = toIso(2, 0);
-    ctx.fillStyle = '#8ac275bb';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('💻 RUANG KERJA (AKTIF)', wTitle.isoX, wTitle.isoY - 8);
+    // Zone Header Labels
+    const z1 = toIso(2, 0);
+    ctx.fillStyle = '#8ac275bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('💻 1. RUANG MEJA KERJA', z1.isoX, z1.isoY - 8);
 
-    const bTitle = toIso(8, 0);
-    ctx.fillStyle = '#63b3edbb';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('🛏 RUANG ISTIRAHAT (SLEEP)', bTitle.isoX, bTitle.isoY - 8);
+    const z2 = toIso(9, 0);
+    ctx.fillStyle = '#63b3edbb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('🖥 2. RAK SERVER (MAINTENANCE)', z2.isoX, z2.isoY - 8);
 
-    // 3. Draw Desks
-    officeDesks.forEach(d => {
-      const isOccupied = employees.some(e => e.deskGx === d.gx && e.deskGy === d.gy && e.status === 'active');
-      drawDesk(d.gx, d.gy, isOccupied);
+    const z3 = toIso(2, 9);
+    ctx.fillStyle = '#e8d089bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('📋 3. AREA RAPAT HUDDLE', z3.isoX, z3.isoY + tileH + 16);
+
+    const z4 = toIso(9, 9);
+    ctx.fillStyle = '#fc8181bb'; ctx.font = 'bold 9.5px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('☕ 4. PANTRY & LOUNGE TIDUR', z4.isoX, z4.isoY + tileH + 16);
+
+    // 3. Draw Zone Furniture
+    // Zone 1: Workstations
+    workstations.forEach(ws => {
+      const isOccupied = employees.some(e => e.deskGx === ws.gx && e.deskGy === ws.gy && e.status === 'active');
+      drawWorkstationDesk(ws.gx, ws.gy, isOccupied);
     });
 
-    // 4. Draw Beds
-    officeBeds.forEach(b => {
+    // Zone 2: Server Racks
+    serverRacks.forEach(sr => drawServerRack(sr.gx, sr.gy, tick));
+
+    // Zone 3: Huddle Table
+    drawHuddleTable(tick);
+
+    // Zone 4: Coffee Machine & Beds
+    drawPantryCoffee(tick);
+    loungeBeds.forEach(b => {
       const isOccupied = employees.some(e => e.bedGx === b.gx && e.bedGy === b.gy && e.status !== 'active');
       drawBed(b.gx, b.gy, isOccupied);
     });
 
-    // 5. Draw Employees (Sims) sorted by Isometric Y
+    // 4. Draw Employees (Sims) sorted by Isometric Depth
     const sortedEmp = [...employees].sort((a, b) => (a.curX + a.curY) - (b.curX + b.curY));
     sortedEmp.forEach(emp => drawSimEmployee(emp, tick));
   }
 
-  cityAnimId = requestAnimationFrame(animateSimsOffice);
+  cityAnimId = requestAnimationFrame(animateHermesOffice);
 }
 
 async function renderImport() {
