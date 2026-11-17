@@ -514,7 +514,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
 
                         // Buat staging batasan.toml baru
                         let (entries, _) = app.catalog(false);
-                        let cat_entry = entries.into_iter().find(|e| &e.id == *id);
+                        let cat_entry = entries.into_iter().find(|e| e.id == *id);
                         let repo_name = cat_entry.as_ref().map(|e| e.repo.as_str()).unwrap_or(&current_app.repo);
                         let asset_name = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.asset.as_str()).unwrap_or(*id);
                         let lang = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.language.as_str()).unwrap_or("go");
