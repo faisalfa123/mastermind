@@ -13,50 +13,56 @@ window.OfficeWorld = (function () {
   function createOfficeScene() {
     const world = new THREE.Group();
 
-    // 1. Flooring with stylized grid tiles
-    const floorGeo = new THREE.PlaneGeometry(36, 32);
+    // 1. Thick 3D Diorama Island Floor Slab (melayang solid di atas latar Matcha Forest)
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#0b130e';
+    ctx.fillStyle = '#0e1912';
     ctx.fillRect(0, 0, 128, 128);
-    ctx.strokeStyle = '#182d21';
+    ctx.strokeStyle = '#1c3526';
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, 128, 128);
     const floorTex = new THREE.CanvasTexture(canvas);
     floorTex.wrapS = THREE.RepeatWrapping;
     floorTex.wrapT = THREE.RepeatWrapping;
-    floorTex.repeat.set(18, 16);
+    floorTex.repeat.set(16, 14);
 
-    const floorMat = new THREE.MeshStandardMaterial({
+    const floorTopMat = new THREE.MeshStandardMaterial({
       map: floorTex,
-      roughness: 0.8,
+      roughness: 0.75,
       metalness: 0.1
     });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
+    const floorSideMat = new THREE.MeshStandardMaterial({
+      color: 0x0b120e,
+      roughness: 0.9,
+      metalness: 0.05
+    });
+    const floorGeo = new THREE.BoxGeometry(34, 1.4, 30);
+    const floor = new THREE.Mesh(floorGeo, [
+      floorSideMat, floorSideMat,
+      floorTopMat, floorSideMat,
+      floorSideMat, floorSideMat
+    ]);
+    floor.position.set(0, -0.7, 0);
     floor.receiveShadow = true;
+    floor.castShadow = true;
     world.add(floor);
 
     // Outer office boundary walls (low-profile rim to keep top-down view clear)
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x142019, roughness: 0.9 });
-    const wallGeoH = new THREE.BoxGeometry(36, 1.2, 0.4);
-    const wallGeoV = new THREE.BoxGeometry(0.4, 1.2, 32);
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x16261d, roughness: 0.85 });
+    const wallGeoH = new THREE.BoxGeometry(34, 0.9, 0.35);
+    const wallGeoV = new THREE.BoxGeometry(0.35, 0.9, 30);
 
     const northWall = new THREE.Mesh(wallGeoH, wallMat);
-    northWall.position.set(0, 0.6, -16);
+    northWall.position.set(0, 0.45, -14.82);
     world.add(northWall);
 
-    const southWall = new THREE.Mesh(wallGeoH, wallMat);
-    southWall.position.set(0, 0.6, 16);
-    world.add(southWall);
-
     const westWall = new THREE.Mesh(wallGeoV, wallMat);
-    westWall.position.set(-18, 0.6, 0);
+    westWall.position.set(-16.82, 0.45, 0);
     world.add(westWall);
 
     const eastWall = new THREE.Mesh(wallGeoV, wallMat);
-    eastWall.position.set(18, 0.6, 0);
+    eastWall.position.set(16.82, 0.45, 0);
     world.add(eastWall);
 
     // 2. Ruang Kaca Eksekutif Mastermind (Bos Kernel Odroid-C2)
@@ -83,15 +89,13 @@ window.OfficeWorld = (function () {
     });
 
     // Glass walls
-    const glassFrontL = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 0.1), glassMat);
-    glassFrontL.position.set(-3.2, 1.2, 3.65);
+    const glassFrontL = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 0.1), glassMat);
+    glassFrontL.position.set(-3.2, 1.1, 3.65);
     glassGroup.add(glassFrontL);
 
-    const glassFrontR = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 0.1), glassMat);
-    glassFrontR.position.set(3.2, 1.2, 3.65);
+    const glassFrontR = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 0.1), glassMat);
+    glassFrontR.position.set(3.2, 1.1, 3.65);
     glassGroup.add(glassFrontR);
-
-    // Entrance opening in the middle (x between -1.1 and 1.1)
 
     // Executive curved desk for Mastermind
     const bossDesk = new THREE.Mesh(
@@ -102,7 +106,7 @@ window.OfficeWorld = (function () {
     bossDesk.rotation.y = Math.PI * 0.5;
     glassGroup.add(bossDesk);
 
-    // 3 Curved Panorama Screens
+    // 3 Curved Panorama Screens facing Mastermind (+Z inside glass room)
     [-0.8, 0, 0.8].forEach((offset, idx) => {
       const scr = new THREE.Mesh(
         new THREE.PlaneGeometry(0.85, 0.5),
@@ -141,42 +145,92 @@ window.OfficeWorld = (function () {
 
     world.add(glassGroup);
 
-    // 3. Zona Istirahat & Lounge (Sofa, Coffee Bar, Bed Pods) di pojok kiri bawah
+    // 3. Zona Istirahat & Chill Lounge (Sofa, Karpet, Meja Kopi, Tanaman, & restSlots)
     const loungeGroup = new THREE.Group();
-    loungeGroup.position.set(-11, 0, 9);
+    loungeGroup.position.set(-10.5, 0, 8.5);
 
-    // Circular rug
+    // Circular warm carpet
     const rug = new THREE.Mesh(
-      new THREE.CircleGeometry(3.5, 32),
-      new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.9 })
+      new THREE.CircleGeometry(4.2, 32),
+      new THREE.MeshStandardMaterial({ color: 0x28382e, roughness: 0.95 })
     );
     rug.rotation.x = -Math.PI / 2;
     rug.position.y = 0.02;
     loungeGroup.add(rug);
 
-    // Modern Curved Sofa
+    // Modern Main Sofa (menghadap +Z ke arah meja kecil)
     const sofa = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 0.45, 1.0),
-      new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 })
+      new THREE.BoxGeometry(4.4, 0.42, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x3b5244, roughness: 0.8 })
     );
-    sofa.position.set(0, 0.25, 0);
+    sofa.position.set(0, 0.25, -1.6);
     sofa.castShadow = true;
     loungeGroup.add(sofa);
 
     const sofaBack = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 0.6, 0.3),
-      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 })
+      new THREE.BoxGeometry(4.4, 0.65, 0.28),
+      new THREE.MeshStandardMaterial({ color: 0x2b3d32, roughness: 0.8 })
     );
-    sofaBack.position.set(0, 0.55, -0.4);
+    sofaBack.position.set(0, 0.52, -2.05);
     sofaBack.castShadow = true;
     loungeGroup.add(sofaBack);
+
+    // Side Sofa (menghadap +X)
+    const sideSofa = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.42, 3.0),
+      new THREE.MeshStandardMaterial({ color: 0x3b5244, roughness: 0.8 })
+    );
+    sideSofa.position.set(-2.6, 0.25, 0.4);
+    sideSofa.castShadow = true;
+    loungeGroup.add(sideSofa);
+
+    const sideSofaBack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.65, 3.0),
+      new THREE.MeshStandardMaterial({ color: 0x2b3d32, roughness: 0.8 })
+    );
+    sideSofaBack.position.set(-3.05, 0.52, 0.4);
+    sideSofaBack.castShadow = true;
+    loungeGroup.add(sideSofaBack);
+
+    // Small Lounge Coffee Table
+    const smallTable = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.9, 0.9, 0.08, 20),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 })
+    );
+    smallTable.position.set(0, 0.42, 0.2);
+    smallTable.castShadow = true;
+    loungeGroup.add(smallTable);
+
+    const smallTableLeg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.18, 0.4, 12),
+      new THREE.MeshStandardMaterial({ color: 0x475569 })
+    );
+    smallTableLeg.position.set(0, 0.2, 0.2);
+    loungeGroup.add(smallTableLeg);
+
+    // Potted Plant (Tanaman Hias Low-Poly)
+    const pot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.24, 0.45, 12),
+      new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8 })
+    );
+    pot.position.set(3.2, 0.22, -1.8);
+    pot.castShadow = true;
+    loungeGroup.add(pot);
+
+    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.7 });
+    [0, 1, 2].forEach(i => {
+      const leaf = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35 - i * 0.06, 0), foliageMat);
+      leaf.position.set(3.2 + (i - 1) * 0.12, 0.65 + i * 0.18, -1.8);
+      leaf.castShadow = true;
+      loungeGroup.add(leaf);
+    });
 
     // Coffee Machine Bar Table
     const barTable = new THREE.Mesh(
       new THREE.BoxGeometry(2.2, 0.9, 0.7),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
     );
-    barTable.position.set(0, 0.45, 2.6);
+    barTable.position.set(0, 0.45, 3.0);
     loungeGroup.add(barTable);
 
     // Coffee maker
@@ -184,11 +238,21 @@ window.OfficeWorld = (function () {
       new THREE.BoxGeometry(0.5, 0.55, 0.4),
       new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3 })
     );
-    coffeeMaker.position.set(-0.4, 1.15, 2.6);
+    coffeeMaker.position.set(-0.4, 1.15, 3.0);
     coffeeMaker.userData = { type: 'coffee' };
     loungeGroup.add(coffeeMaker);
 
     world.add(loungeGroup);
+
+    // Rest Slots di Chill Lounge agar worker duduk rapi & tidak bertumpuk
+    const restSlots = [
+      { pos: new THREE.Vector3(-12.0, 0, 7.0), rotY: 0 },
+      { pos: new THREE.Vector3(-10.5, 0, 7.0), rotY: 0 },
+      { pos: new THREE.Vector3(-9.0, 0, 7.0), rotY: 0 },
+      { pos: new THREE.Vector3(-12.8, 0, 8.2), rotY: Math.PI / 2 },
+      { pos: new THREE.Vector3(-12.8, 0, 9.6), rotY: Math.PI / 2 },
+      { pos: new THREE.Vector3(-9.2, 0, 9.8), rotY: -Math.PI / 4 }
+    ];
 
     // 4. Server Tech Bay (Datacenter Racks) di pojok kanan atas
     const serverBay = new THREE.Group();
@@ -221,8 +285,9 @@ window.OfficeWorld = (function () {
       socAlertLight,
       miniRack,
       coffeeMaker,
-      loungePos: new THREE.Vector3(-11, 0, 9),
-      bossPos: new THREE.Vector3(0, 0, -9.5)
+      restSlots,
+      loungePos: new THREE.Vector3(-10.5, 0, 8.5),
+      bossPos: new THREE.Vector3(0, 0, -9.2)
     };
   }
 

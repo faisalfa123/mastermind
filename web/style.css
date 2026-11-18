@@ -635,6 +635,60 @@ dialog input{margin-top:10px}
   pointer-events: none;
 }
 
+/* Frameless Transparent Mode Khusus Tab KOTA */
+.city-frameless {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 170px);
+  min-height: 520px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+.city-frameless-canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: transparent;
+  overflow: hidden;
+}
+.city-floating-controls {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.city-floating-pill {
+  pointer-events: auto;
+  background: rgba(15, 23, 18, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(138, 194, 117, 0.25);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.city-floating-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 6px var(--good);
+}
+
 /* ==========================================================================
    PWA INSTALL PILL & FLOATING BANNER
    ========================================================================== */

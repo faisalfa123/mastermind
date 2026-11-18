@@ -19,22 +19,25 @@ window.WorkerFactory = (function () {
   const keyboardMaterial = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
 
   /**
-   * Creates a dynamic canvas texture for computer screens
+   * Draws dynamic screen content onto a canvas
    */
-  function createScreenTexture(title, status, cpuPct) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 160;
-    const ctx = canvas.getContext('2d');
-
+  function drawScreen(ctx, title, status, cpuPct) {
     // Background
-    ctx.fillStyle = status === 'failed' ? '#4a0e0e' : (status === 'inactive' ? '#0d1310' : '#0a1612');
+    ctx.fillStyle = status === 'failed' ? '#4a0e0e' : (status === 'inactive' ? '#050806' : '#0a1612');
     ctx.fillRect(0, 0, 256, 160);
 
     // Frame border
-    ctx.strokeStyle = status === 'failed' ? '#ff3b30' : (status === 'inactive' ? '#334155' : '#48bb78');
+    ctx.strokeStyle = status === 'failed' ? '#ff3b30' : (status === 'inactive' ? '#1e293b' : '#48bb78');
     ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, 252, 156);
+
+    if (status === 'inactive') {
+      // Screen off (minimal power indicator)
+      ctx.fillStyle = '#334155';
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText('DISPLAY OFF', 55, 86);
+      return;
+    }
 
     // Title Header
     ctx.fillStyle = '#ffffff';
@@ -47,10 +50,6 @@ window.WorkerFactory = (function () {
       ctx.fillText('ERR CRASH', 28, 88);
       ctx.font = '14px monospace';
       ctx.fillText('exit code: 1', 28, 120);
-    } else if (status === 'inactive') {
-      ctx.fillStyle = '#64748b';
-      ctx.font = 'bold 22px monospace';
-      ctx.fillText('STANDBY / OFF', 28, 90);
     } else {
       // Matrix code lines
       ctx.fillStyle = cpuPct > 65 ? '#ff9800' : '#52c41a';
@@ -64,10 +63,31 @@ window.WorkerFactory = (function () {
       const w = Math.min(228, (cpuPct / 100) * 228);
       ctx.fillRect(14, 138, w, 8);
     }
+  }
+
+  /**
+   * Creates a dynamic canvas texture for computer screens
+   */
+  function createScreenTexture(title, status, cpuPct) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+
+    drawScreen(ctx, title, status, cpuPct);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return { texture, canvas, ctx };
+  }
+
+  /**
+   * Updates an existing screen texture when status changes (e.g., Stop / Start)
+   */
+  function updateScreenTexture(screenData, title, status, cpuPct) {
+    if (!screenData || !screenData.ctx || !screenData.texture) return;
+    drawScreen(screenData.ctx, title, status, cpuPct || 0);
+    screenData.texture.needsUpdate = true;
   }
 
   /**
@@ -390,15 +410,20 @@ window.WorkerFactory = (function () {
     rightArm.root.position.set(0.28 * scale, 0.88 * scale, 0);
     worker.add(rightArm.root);
 
-    // Legs
+    // Articulated Legs (pivot at hip for walking cycle)
     const legGeo = new THREE.BoxGeometry(0.14 * scale, 0.38 * scale, 0.14 * scale);
+    legGeo.translate(0, -0.19 * scale, 0);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
-    [-0.12 * scale, 0.12 * scale].forEach(x => {
-      const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(x, 0.2 * scale, 0);
-      leg.castShadow = true;
-      worker.add(leg);
-    });
+
+    const leftLeg = new THREE.Mesh(legGeo, legMat);
+    leftLeg.position.set(-0.12 * scale, 0.39 * scale, 0);
+    leftLeg.castShadow = true;
+    worker.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeo, legMat);
+    rightLeg.position.set(0.12 * scale, 0.39 * scale, 0);
+    rightLeg.castShadow = true;
+    worker.add(rightLeg);
 
     // Octahedron Plumbob Indicator
     const plumbobColor = emp.status === 'active' ? (emp.cpu_pct > 65 ? 0xffaa00 : 0x48bb78) : 0xe53e3e;
@@ -408,7 +433,7 @@ window.WorkerFactory = (function () {
     plumbob.position.y = 1.75 * scale;
     worker.add(plumbob);
 
-    // Floating text label sprite
+    // Floating text label sprite (always faces camera automatically in Three.js)
     const textCanvas = document.createElement('canvas');
     textCanvas.width = 256;
     textCanvas.height = 64;
@@ -436,6 +461,8 @@ window.WorkerFactory = (function () {
       torso,
       leftArm,
       rightArm,
+      leftLeg,
+      rightLeg,
       plumbob,
       sprite
     };
@@ -444,6 +471,7 @@ window.WorkerFactory = (function () {
   return {
     createSwivelChair,
     createLDesk,
-    createWorkerCharacter
+    createWorkerCharacter,
+    updateScreenTexture
   };
 })();

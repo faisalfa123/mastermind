@@ -962,26 +962,54 @@ function openSlideDrawer(emp, onActionTriggered) {
     if (emp.status === 'active') {
       actionButtons.push(h('button', { class: 'ghost', onclick: async () => {
         closeSlideDrawer();
+        // 1. Update status lokal -> langsung padamkan monitor & LED merah, ubah state ke WALKING_TO_REST
+        emp.status = 'inactive';
+        emp.animState = 'WALKING_TO_REST';
+        emp.walkStage = 0; // Waypoint lorong dulu sebelum ke restSlot
+        if (emp.deskObj) {
+          window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'inactive', 0);
+          if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0xe53e3e);
+        }
+        if (emp.worker3D && emp.worker3D.plumbob) {
+          emp.worker3D.plumbob.material.color.setHex(0xe53e3e);
+        }
         if (onActionTriggered) onActionTriggered('stop', emp);
-        toast(`Menghentikan ${emp.name}... Pegawai berjalan ke Sofa Lounge.`);
+        toast(`Menghentikan ${emp.name}... Layar padam & pekerja berjalan ke Zona Istirahat.`);
         await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
-        render();
       } }, '⏹ Stop Service'));
 
       actionButtons.push(h('button', { class: 'good', onclick: async () => {
         closeSlideDrawer();
+        emp.status = 'active';
+        emp.animState = 'WALKING_TO_DESK';
+        emp.walkStage = 0;
+        if (emp.deskObj) {
+          window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'active', emp.cpu_pct || 25);
+          if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0x48bb78);
+        }
+        if (emp.worker3D && emp.worker3D.plumbob) {
+          emp.worker3D.plumbob.material.color.setHex(0x48bb78);
+        }
         if (onActionTriggered) onActionTriggered('restart', emp);
         toast(`Me-restart ${emp.name}... Mastermind mengirim data packet.`);
         await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
-        setTimeout(render, 2200);
       } }, '🔄 Restart'));
     } else {
       actionButtons.push(h('button', { class: 'good', onclick: async () => {
         closeSlideDrawer();
+        emp.status = 'active';
+        emp.animState = 'WALKING_TO_DESK';
+        emp.walkStage = 0;
+        if (emp.deskObj) {
+          window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'active', emp.cpu_pct || 20);
+          if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0x48bb78);
+        }
+        if (emp.worker3D && emp.worker3D.plumbob) {
+          emp.worker3D.plumbob.material.color.setHex(0x48bb78);
+        }
         if (onActionTriggered) onActionTriggered('start', emp);
-        toast(`Menjalankan ${emp.name}... Mastermind mengirim data packet.`);
+        toast(`Menjalankan ${emp.name}... Pekerja berjalan kembali ke meja kerja.`);
         await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
-        render();
       } }, '▶ Start Service'));
     }
 
@@ -1066,7 +1094,7 @@ async function renderCity() {
 
   const sfxBtn = h('button', {
     class: 'ghost',
-    style: { padding: '3px 8px', fontSize: '11px', cursor: 'pointer' },
+    style: { padding: '2px 8px', fontSize: '10px', cursor: 'pointer', borderRadius: '999px' },
     onclick: () => {
       sfxEnabled = !sfxEnabled;
       localStorage.setItem('mm-sfx', sfxEnabled ? '1' : '0');
@@ -1076,47 +1104,42 @@ async function renderCity() {
     }
   }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
 
-  const container3D = h('div', { id: 'office3d-container', style: { width: '100%', height: '560px', position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0a100c' } });
-  const canvasWrap = h('div', { class: 'city-canvas-wrapper', style: { position: 'relative' } },
+  // 1. Mode Transparan Tanpa Bingkai Khusus Tab KOTA (Menyatu dengan Matcha Forest)
+  const container3D = h('div', { id: 'office3d-container', class: 'city-frameless-canvas' });
+  const framelessStage = h('div', { class: 'city-frameless' },
     container3D,
-    h('div', { class: 'city-badge', style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-      h('span', { class: 'dot' }),
-      'Mastermind HQ • Virtual 3D Office • Top-Down Isometric • 24 FPS',
-      sfxBtn
-    ),
-    h('div', { class: 'city-instructions' }, '🖱️ Putar: Klik & Tarik • Zoom: Scroll • Klik Pekerja untuk Membuka Slide Drawer Kontrol & Live Logs')
-  );
-
-  const cityCard = h('div', { class: 'card city-container' },
-    h('div', {},
-      h('h3', {}, '🏢 MASTERMIND HQ (VIRTUAL 3D OFFICE & SERVICE MANAGER)'),
-      h('p', { class: 'dim', style: { fontSize: '11px;' } },
-        'Denah kantor virtual top-down isometrik berbasis Three.js di-render 100% di browser Anda (Beban CPU Odroid-C2 = 0%). ' +
-        'Pekerja procedural beranimasi multi-joint sesuai metrik CPU/RAM real-time, dikomandoi oleh Mastermind di Ruang Kaca.'
+    h('div', { class: 'city-floating-controls' },
+      h('div', { class: 'city-floating-pill' },
+        h('span', { class: 'dot' }),
+        h('span', {}, 'Mastermind HQ • 24 FPS'),
+        sfxBtn
+      ),
+      h('div', { class: 'city-floating-pill' },
+        '🖱️ Putar: Klik & Tarik • Zoom: Scroll • Klik Pekerja untuk Kontrol & Logs'
       )
-    ),
-    canvasWrap
+    )
   );
 
-  view.replaceChildren(...[topBar, cityCard].filter(Boolean));
+  view.replaceChildren(...[topBar, framelessStage].filter(Boolean));
 
   if (typeof THREE === 'undefined') {
     container3D.appendChild(h('p', { class: 'err', style: { padding: '20px' } }, 'Gagal memuat modul Three.js.'));
     return;
   }
 
-  const width = container3D.clientWidth || 920;
-  const height = 560;
+  const width = container3D.clientWidth || 960;
+  const height = container3D.clientHeight || 560;
 
+  // Transparent Scene Background (menyatu langsung dengan #zen-canvas Matcha Forest)
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a100c);
-  scene.fog = new THREE.FogExp2(0x0a100c, 0.012);
+  scene.background = null;
 
-  // Top-Down / High-Angle Isometric Camera (55° tilt from above)
-  const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
-  camera.position.set(0, 24, 22);
+  // 3. Dekatkan Kamera Isometrik & Perbesar Proporsi Ruangan
+  const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000);
+  camera.position.set(0, 15.5, 16.5);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setClearColor(0x000000, 0);
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -1124,37 +1147,48 @@ async function renderCity() {
   container3D.appendChild(renderer.domElement);
   threeRenderer = renderer;
 
-  // OrbitControls restricted to Top-Down perspective (cannot clip below floor or flip over top)
+  // Handle responsive resize
+  const onResize = () => {
+    if (!container3D || !renderer) return;
+    const w = container3D.clientWidth || 960;
+    const hVal = container3D.clientHeight || 560;
+    camera.aspect = w / hVal;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, hVal);
+  };
+  window.addEventListener('resize', onResize, { passive: true });
+
+  // OrbitControls restricted to Top-Down perspective
   let controls = null;
   if (typeof THREE.OrbitControls !== 'undefined') {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.minPolarAngle = Math.PI / 4.5; // ~40°
-    controls.maxPolarAngle = Math.PI / 2.3; // ~78°
-    controls.minDistance = 6;
-    controls.maxDistance = 42;
-    controls.target.set(0, 0, 0);
+    controls.minPolarAngle = Math.PI / 5;   // ~36°
+    controls.maxPolarAngle = Math.PI / 2.25; // ~80°
+    controls.minDistance = 5;
+    controls.maxDistance = 36;
+    controls.target.set(0, 0.4, -1.0);
   }
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
   scene.add(ambientLight);
 
   const dirLight = new THREE.DirectionalLight(0xf0fdf4, 0.95);
-  dirLight.position.set(16, 30, 16);
+  dirLight.position.set(14, 28, 16);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.width = 1024;
   dirLight.shadow.mapSize.height = 1024;
   dirLight.shadow.camera.near = 0.5;
-  dirLight.shadow.camera.far = 70;
-  dirLight.shadow.camera.left = -22;
-  dirLight.shadow.camera.right = 22;
-  dirLight.shadow.camera.top = 22;
-  dirLight.shadow.camera.bottom = -22;
+  dirLight.shadow.camera.far = 65;
+  dirLight.shadow.camera.left = -20;
+  dirLight.shadow.camera.right = 20;
+  dirLight.shadow.camera.top = 20;
+  dirLight.shadow.camera.bottom = -20;
   scene.add(dirLight);
 
-  // Add Office Architecture
+  // Add Office Architecture (Diorama Slab + Mastermind Glass Suite + Chill Lounge)
   const office = window.OfficeWorld.createOfficeScene();
   scene.add(office.world);
 
@@ -1177,16 +1211,17 @@ async function renderCity() {
 
   const employees = [];
 
-  // 1. Create Mastermind (The Boss Kernel) inside Glass Room
+  // 1. Create Mastermind (The Boss Kernel) inside Glass Room facing monitors (Math.PI)
   const bossEmp = {
     id: 'mastermind',
     name: 'Mastermind',
     status: 'active',
+    animState: 'WORKING',
     isHQ: true,
-    deskPos: new THREE.Vector3(0, 0, -9.5),
-    loungePos: office.loungePos,
-    curPos: new THREE.Vector3(0, 0, -9.5),
-    targetPos: new THREE.Vector3(0, 0, -9.5),
+    deskPos: new THREE.Vector3(0, 0, -9.2),
+    restSlot: { pos: office.loungePos, rotY: 0 },
+    curPos: new THREE.Vector3(0, 0, -9.2),
+    targetPos: new THREE.Vector3(0, 0, -9.2),
     cpu_pct: 12.0,
     mem_mb: 8,
     category: 'kernel',
@@ -1195,11 +1230,13 @@ async function renderCity() {
 
   const bossWorker3D = window.WorkerFactory.createWorkerCharacter(bossEmp);
   bossWorker3D.root.position.copy(bossEmp.curPos);
+  bossWorker3D.root.rotation.y = Math.PI; // Menghadap layar melengkung di -Z
   scene.add(bossWorker3D.root);
   bossEmp.worker3D = bossWorker3D;
 
   const bossChair3D = window.WorkerFactory.createSwivelChair();
   bossChair3D.root.position.set(0, 0, -9.2);
+  bossChair3D.root.rotation.y = Math.PI; // Sandaran kursi di belakang punggung (+Z)
   scene.add(bossChair3D.root);
   bossEmp.chair3D = bossChair3D;
 
@@ -1208,6 +1245,7 @@ async function renderCity() {
   (bossWorker3D.torso || bossWorker3D.root).userData = { type: 'employee', emp: bossEmp };
 
   // 2. Create Workers for Installed Applications
+  const restSlots = office.restSlots || [{ pos: office.loungePos, rotY: 0 }];
   installedApps.forEach((app, idx) => {
     const dLoc = deskLocations[idx % deskLocations.length];
     const isAct = app.status === 'active';
@@ -1219,27 +1257,28 @@ async function renderCity() {
     deskObj.root.position.set(dLoc.x, 0, dLoc.z);
     scene.add(deskObj.root);
 
-    // Create Swivel Chair
+    // Create Swivel Chair rotated Math.PI so backrest is behind worker facing -Z monitor
     const chairObj = window.WorkerFactory.createSwivelChair();
     chairObj.root.position.set(dLoc.x, 0, dLoc.z + 0.85);
+    chairObj.root.rotation.y = Math.PI;
     scene.add(chairObj.root);
 
-    const loungeTarget = new THREE.Vector3(
-      office.loungePos.x + (idx % 3) * 1.4 - 1.4,
-      0,
-      office.loungePos.z + Math.floor(idx / 3) * 1.4
-    );
+    const slot = restSlots[idx % restSlots.length];
+    const deskPosVec = new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85);
 
     const emp = {
       id: app.id,
       name: app.id,
       status: app.status,
+      animState: isAct ? (cpuPct > 65 ? 'OVERLOAD' : (cpuPct >= 5 ? 'WORKING' : 'IDLE')) : 'RESTING',
+      walkStage: 0,
       port: app.port || 0,
       isHQ: false,
-      deskPos: new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85),
-      loungePos: loungeTarget,
-      curPos: isAct ? new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85) : loungeTarget.clone(),
-      targetPos: isAct ? new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85) : loungeTarget.clone(),
+      deskPos: deskPosVec,
+      aislePos: new THREE.Vector3(-2.5, 0, 5.2), // Lorong aman untuk pathfinding menghindari meja
+      restSlot: slot,
+      curPos: isAct ? deskPosVec.clone() : slot.pos.clone(),
+      targetPos: isAct ? deskPosVec.clone() : slot.pos.clone(),
       cpu_pct: cpuPct,
       mem_mb: app.mem_mb || 48,
       category: cat,
@@ -1251,6 +1290,7 @@ async function renderCity() {
 
     const worker3D = window.WorkerFactory.createWorkerCharacter(emp);
     worker3D.root.position.copy(emp.curPos);
+    worker3D.root.rotation.y = isAct ? Math.PI : slot.rotY; // Menghadap monitor (Math.PI) saat bekerja
     scene.add(worker3D.root);
     emp.worker3D = worker3D;
 
@@ -1266,12 +1306,15 @@ async function renderCity() {
       playSfx('beep');
       levelUp(`⚡ [DATA PACKET] ${action.toUpperCase()} ${targetEmp.name}`);
       if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
-        targetEmp.deskObj.beacon.material.color.setHex(0x00f5d4);
-        setTimeout(() => {
-          if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
-            targetEmp.deskObj.beacon.material.color.setHex(0x48bb78);
-          }
-        }, 1200);
+        const nextHex = action === 'stop' ? 0xe53e3e : 0x00f5d4;
+        targetEmp.deskObj.beacon.material.color.setHex(nextHex);
+        if (action !== 'stop') {
+          setTimeout(() => {
+            if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
+              targetEmp.deskObj.beacon.material.color.setHex(0x48bb78);
+            }
+          }, 1200);
+        }
       }
     });
     scene.add(projectile.group);
@@ -1300,9 +1343,8 @@ async function renderCity() {
       if (type === 'employee') {
         const emp = hit.userData.emp;
         playSfx('beep');
-        // Smooth camera lerp target towards clicked worker
         if (controls) {
-          controls.target.set(emp.deskPos.x, 1.2, emp.deskPos.z);
+          controls.target.set(emp.curPos.x, 1.0, emp.curPos.z);
         }
         openSlideDrawer(emp, triggerActionProjectile);
       } else if (type === 'coffee') {
@@ -1348,71 +1390,109 @@ async function renderCity() {
       bossEmp.targetPos.x = Math.sin(tick * 0.08) * 2.2;
     } else {
       office.socAlertLight.intensity = 0;
-      bossEmp.targetPos.set(0, 0, -9.5);
+      bossEmp.targetPos.set(0, 0, -9.2);
     }
 
     // Animate Employees Choreography State Machine
     employees.forEach(emp => {
       const isAct = emp.status === 'active';
       const cpu = emp.cpu_pct || 0;
-      emp.targetPos = isAct ? emp.deskPos : emp.loungePos;
 
-      // Smooth step pathfinding movement
-      const dx = emp.targetPos.x - emp.curPos.x;
-      const dz = emp.targetPos.z - emp.curPos.z;
+      // Tentukan target waypoint untuk pathfinding (hindari meja)
+      let currentTarget = emp.deskPos;
+      if (!emp.isHQ) {
+        if (emp.animState === 'WALKING_TO_REST') {
+          currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.restSlot.pos;
+        } else if (emp.animState === 'WALKING_TO_DESK') {
+          currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.deskPos;
+        } else if (!isAct) {
+          currentTarget = emp.restSlot.pos;
+        }
+      } else {
+        currentTarget = emp.targetPos;
+      }
+
+      const dx = currentTarget.x - emp.curPos.x;
+      const dz = currentTarget.z - emp.curPos.z;
       const dist = Math.hypot(dx, dz);
-      const isWalking = dist > 0.08;
+      const isWalking = dist > 0.12;
 
       if (isWalking) {
-        emp.curPos.x += (dx / dist) * 0.1;
-        emp.curPos.z += (dz / dist) * 0.1;
+        // Berputar menghadap arah jalan & animasi walking cycle (lengan + kaki + bobbing)
+        emp.curPos.x += (dx / dist) * 0.14;
+        emp.curPos.z += (dz / dist) * 0.14;
         emp.worker3D.root.rotation.y = Math.atan2(dx, dz);
-        // Leg swing animation while walking
-        const legBob = Math.sin(tick * 0.6) * 0.08;
-        emp.worker3D.root.position.y = Math.abs(legBob);
+
+        const swing = Math.sin(tick * 0.55) * 0.55;
+        if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = swing;
+        if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = -swing;
+        emp.worker3D.leftArm.upperArm.rotation.x = -swing * 0.7;
+        emp.worker3D.rightArm.upperArm.rotation.x = swing * 0.7;
+        emp.worker3D.torso.rotation.x = 0.05;
+        emp.worker3D.head.rotation.x = 0;
+        emp.worker3D.root.position.y = Math.abs(Math.sin(tick * 0.55)) * 0.08;
+        if (tick % 10 === 0) playSfx('step');
       } else {
-        emp.worker3D.root.position.y = 0;
-        emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, 0, 0.1);
-
-        // State Machine Choreography:
-        if (emp.isHQ) {
-          // Boss scanning room
-          emp.worker3D.root.rotation.y = Math.sin(tick * 0.03) * 0.3;
-          if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = Math.sin(tick * 0.03) * 0.3;
-        } else if (!isAct) {
-          // STOPPED: Sleeping in lounge
-          emp.worker3D.head.rotation.x = 0.35; // Head nodded off
-          emp.worker3D.leftArm.upperArm.rotation.x = 0.1;
-          emp.worker3D.rightArm.upperArm.rotation.x = 0.1;
-        } else if (cpu > 65) {
-          // OVERLOAD: Typing furiously 3x, head shaking
-          const furious = tick * 1.2;
-          emp.worker3D.leftArm.upperArm.rotation.x = -0.7 + Math.sin(furious) * 0.25;
-          emp.worker3D.rightArm.upperArm.rotation.x = -0.7 + Math.cos(furious) * 0.25;
-          emp.worker3D.head.rotation.y = Math.sin(tick * 0.8) * 0.18;
-          if (emp.chair3D) emp.chair3D.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
-        } else if (cpu >= 5) {
-          // WORKING: Lean forward, rapid typing
-          const speed = tick * 0.5;
-          emp.worker3D.torso.rotation.x = 0.12;
-          emp.worker3D.leftArm.upperArm.rotation.x = -0.6 + Math.sin(speed) * 0.15;
-          emp.worker3D.rightArm.upperArm.rotation.x = -0.6 + Math.cos(speed) * 0.15;
-          emp.worker3D.head.rotation.x = 0.15;
+        // Lanjut ke stage pathfinding berikutnya atau selesai sampai tujuan
+        if ((emp.animState === 'WALKING_TO_REST' || emp.animState === 'WALKING_TO_DESK') && emp.walkStage === 0) {
+          emp.walkStage = 1;
         } else {
-          // IDLE: Lean back, occasional swivel, coffee sip
-          emp.worker3D.torso.rotation.x = -0.08;
-          emp.worker3D.head.rotation.x = 0;
-          const swivel = Math.sin(tick * 0.04) * 0.12;
-          if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = swivel;
-          emp.worker3D.root.rotation.y = swivel;
+          if (emp.animState === 'WALKING_TO_REST') emp.animState = 'RESTING';
+          if (emp.animState === 'WALKING_TO_DESK') emp.animState = cpu > 65 ? 'OVERLOAD' : (cpu >= 5 ? 'WORKING' : 'IDLE');
 
-          // Occasional coffee sip
-          if (Math.sin(tick * 0.02) > 0.85) {
-            emp.worker3D.rightArm.upperArm.rotation.x = -1.1;
-            emp.worker3D.rightArm.forearmGroup.rotation.x = -0.6;
+          emp.worker3D.root.position.y = 0;
+          if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = 0;
+          if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = 0;
+
+          if (emp.isHQ) {
+            // Boss menghadap monitor (Math.PI) dan memindai pelan
+            const scanRot = Math.PI + Math.sin(tick * 0.03) * 0.25;
+            emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, scanRot, 0.12);
+            if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = Math.sin(tick * 0.03) * 0.25;
+          } else if (!isAct || emp.animState === 'RESTING') {
+            // RESTING di Chill Lounge Sofa: menghadap ke sofa/depan, kepala mengangguk tertidur
+            emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, emp.restSlot.rotY, 0.15);
+            emp.worker3D.torso.rotation.x = -0.1;
+            emp.worker3D.head.rotation.x = 0.35 + Math.sin(tick * 0.06) * 0.08;
+            emp.worker3D.leftArm.upperArm.rotation.x = 0.1;
+            emp.worker3D.rightArm.upperArm.rotation.x = 0.1;
           } else {
-            emp.worker3D.rightArm.upperArm.rotation.x = -0.2;
-            emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+            // Duduk di kursi meja kerja menghadap monitor (Math.PI)
+            const targetFacing = Math.PI;
+            if (cpu > 65) {
+              // OVERLOAD: mengetik cepat 3x lipat, kepala geleng panik
+              emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing, 0.2);
+              const furious = tick * 1.2;
+              emp.worker3D.torso.rotation.x = 0.14;
+              emp.worker3D.leftArm.upperArm.rotation.x = -0.75 + Math.sin(furious) * 0.25;
+              emp.worker3D.rightArm.upperArm.rotation.x = -0.75 + Math.cos(furious) * 0.25;
+              emp.worker3D.head.rotation.y = Math.sin(tick * 0.8) * 0.18;
+              if (emp.chair3D) emp.chair3D.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
+            } else if (cpu >= 5) {
+              // WORKING: menghadap monitor, badan condong ke depan, tangan mengetik di keyboard
+              emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing, 0.2);
+              const speed = tick * 0.5;
+              emp.worker3D.torso.rotation.x = 0.12;
+              emp.worker3D.leftArm.upperArm.rotation.x = -0.68 + Math.sin(speed) * 0.14;
+              emp.worker3D.rightArm.upperArm.rotation.x = -0.68 + Math.cos(speed) * 0.14;
+              emp.worker3D.head.rotation.x = 0.15;
+              emp.worker3D.head.rotation.y = 0;
+            } else {
+              // IDLE: bersandar santai menghadap monitor, kursi berputar halus, sesekali angkat kopi
+              const swivel = Math.sin(tick * 0.04) * 0.12;
+              emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing + swivel, 0.15);
+              if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = swivel;
+              emp.worker3D.torso.rotation.x = -0.08;
+              emp.worker3D.head.rotation.x = 0;
+              emp.worker3D.head.rotation.y = 0;
+              if (Math.sin(tick * 0.02) > 0.85) {
+                emp.worker3D.rightArm.upperArm.rotation.x = -1.1;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = -0.6;
+              } else {
+                emp.worker3D.rightArm.upperArm.rotation.x = -0.2;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+              }
+            }
           }
         }
       }
