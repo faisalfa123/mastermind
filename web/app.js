@@ -463,16 +463,34 @@ function openInstallWizard(a) {
     memory_max_mb: a.memory_max_mb || 64,
     cpu_quota_pct: a.cpu_quota_pct || 30,
     autostart: true,
-    paths_rw: [`/var/lib/${a.id}`],
-    paths_ro: [`/etc/${a.id}`],
+    paths_rw: [`/var/lib/mastermind/${a.id}`],
+    paths_ro: [],
     pin: ''
   };
+
+  const FORBIDDEN_PATHS = ['/etc', '/root', '/home', '/boot', '/proc', '/sys', '/dev', '/usr', '/bin', '/sbin', '/lib', '/opt/mastermind', '/run', '/var/run'];
+  function checkPathsAllowed(paths) {
+    for (const p of paths) {
+      const clean = p.trim();
+      if (!clean) continue;
+      if (clean === '/') return `Path '${clean}' dilarang`;
+      for (const f of FORBIDDEN_PATHS) {
+        if (clean === f || clean.startsWith(f + '/')) return `Path '${clean}' dilarang (direktori sistem aman ${f})`;
+      }
+      if (clean.startsWith('/var/lib/mastermind/') && clean !== `/var/lib/mastermind/${cfg.id}` && !clean.startsWith(`/var/lib/mastermind/${cfg.id}/`)) {
+        return `Path '${clean}' dilarang (jail aplikasi lain)`;
+      }
+    }
+    return null;
+  }
 
   const tomlPreview = h('textarea', {
     rows: 18,
     spellcheck: 'false',
     style: 'width: 100%; height: 350px; font-family: monospace; font-size: 11px; background: #0a110d; color: #a3e635; border: 1px solid var(--border); border-radius: 6px; padding: 10px; resize: none;'
   });
+
+  const pathStatus = h('span', { class: 'port-status-pill port-ok', style: 'display:none;' });
 
   function updateTomlPreview() {
     tomlPreview.value = [
@@ -505,6 +523,17 @@ function openInstallWizard(a) {
       `restart_sec = 3`,
       `burst_limit = 5`
     ].join('\n');
+
+    const pathErr = checkPathsAllowed([...cfg.paths_rw, ...cfg.paths_ro]);
+    if (pathErr) {
+      pathStatus.style.display = 'inline-block';
+      pathStatus.textContent = `⚠ ${pathErr}`;
+      pathStatus.className = 'port-status-pill port-err';
+      installBtn.disabled = true;
+    } else {
+      pathStatus.style.display = 'none';
+      if (portOk) installBtn.disabled = false;
+    }
   }
 
   const portInput = h('input', { type: 'number', min: '80', max: '65535', value: cfg.port });
@@ -536,7 +565,8 @@ function openInstallWizard(a) {
           portStatus.textContent = `✔ Port :${p} tersedia`;
           portStatus.className = 'port-status-pill port-ok';
           portOk = true;
-          installBtn.disabled = false;
+          const pathErr = checkPathsAllowed([...cfg.paths_rw, ...cfg.paths_ro]);
+          if (!pathErr) installBtn.disabled = false;
         }
       } catch (_) {
         portStatus.textContent = 'Gagal memeriksa status port';
@@ -572,16 +602,31 @@ function openInstallWizard(a) {
   } });
   const autostartToggle = h('label', { class: 'switch-control' }, autostartCheck, h('span', { class: 'switch-slider' }));
 
+  const rwInput = h('input', { value: cfg.paths_rw.join(', '), placeholder: '/var/lib/mastermind/myapp', oninput: e => {
+    cfg.paths_rw = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+    updateTomlPreview();
+  } });
+
   const pinInput = h('input', { placeholder: 'SHA256 pin (opsional jika rilis tanpa checksums.txt)', value: cfg.pin, oninput: e => {
     cfg.pin = e.target.value.trim();
   } });
 
-  updateTomlPreview();
+  // Prioritas batasan_toml bawaan resmi aplikasi dari katalog
+  if (a.batasan_toml && a.batasan_toml.trim().length > 10) {
+    tomlPreview.value = a.batasan_toml;
+  } else {
+    updateTomlPreview();
+  }
   triggerPortCheck();
 
   const close = () => modal.remove();
 
   const installBtn = h('button', { class: 'good', onclick: async () => {
+    const pathErr = checkPathsAllowed([...cfg.paths_rw, ...cfg.paths_ro]);
+    if (pathErr) {
+      toast(pathErr);
+      return;
+    }
     if (!portOk) {
       toast('Perbaiki bentrok port sebelum memasang!');
       return;
@@ -636,6 +681,13 @@ function openInstallWizard(a) {
     h('div', { style: 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;' },
       h('span', { style: 'font-size: 11px;' }, 'Jalankan Otomatis saat Boot:'),
       autostartToggle
+    ),
+    h('div', { style: 'margin-bottom: 10px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Akses Tulis Jail (paths_rw):'),
+        pathStatus
+      ),
+      rwInput
     ),
     (a.verified === false ? h('div', { style: 'margin-bottom: 8px;' },
       h('label', { style: 'font-size: 10px; color: var(--warn); display: block; margin-bottom: 4px;' }, 'Pin SHA256 (Opsional):'),
