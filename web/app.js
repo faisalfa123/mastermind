@@ -933,6 +933,123 @@ function playSfx(type) {
 
 let office3DActive = true;
 let threeRenderer = null;
+let currentSelectedEmp = null;
+let activeDrawer = null;
+
+function closeSlideDrawer() {
+  const drawer = document.getElementById('slide-drawer');
+  if (drawer) {
+    drawer.classList.remove('open');
+    setTimeout(() => drawer.remove(), 350);
+  }
+  activeDrawer = null;
+}
+
+function openSlideDrawer(emp, onActionTriggered) {
+  let drawer = document.getElementById('slide-drawer');
+  if (drawer) drawer.remove();
+
+  const host = window.location.hostname;
+  const directHttp = `http://${host}:${emp.port}`;
+  const cpuVal = (emp.cpu_pct || 0).toFixed(1);
+  const memVal = emp.mem_mb ? `${emp.mem_mb} MB` : 'cgroup';
+
+  const logBox = h('div', { class: 'drawer-logs-box' }, 'Memuat live stream journalctl logs...');
+  const closeBtn = h('button', { class: 'ghost', style: 'padding: 2px 8px; font-size: 14px;', onclick: closeSlideDrawer }, '✕');
+
+  const actionButtons = [];
+  if (!emp.isHQ) {
+    if (emp.status === 'active') {
+      actionButtons.push(h('button', { class: 'ghost', onclick: async () => {
+        closeSlideDrawer();
+        if (onActionTriggered) onActionTriggered('stop', emp);
+        toast(`Menghentikan ${emp.name}... Pegawai berjalan ke Sofa Lounge.`);
+        await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
+        render();
+      } }, '⏹ Stop Service'));
+
+      actionButtons.push(h('button', { class: 'good', onclick: async () => {
+        closeSlideDrawer();
+        if (onActionTriggered) onActionTriggered('restart', emp);
+        toast(`Me-restart ${emp.name}... Mastermind mengirim data packet.`);
+        await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
+        setTimeout(render, 2200);
+      } }, '🔄 Restart'));
+    } else {
+      actionButtons.push(h('button', { class: 'good', onclick: async () => {
+        closeSlideDrawer();
+        if (onActionTriggered) onActionTriggered('start', emp);
+        toast(`Menjalankan ${emp.name}... Mastermind mengirim data packet.`);
+        await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
+        render();
+      } }, '▶ Start Service'));
+    }
+
+    if (emp.port > 0) {
+      actionButtons.push(h('a', {
+        href: directHttp,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: 'btn good',
+        style: 'text-decoration: none; padding: 6px 12px; font-size: 11px;',
+        onclick: closeSlideDrawer
+      }, `Buka HTTP :${emp.port} ↗`));
+    }
+  }
+
+  drawer = h('div', { id: 'slide-drawer', class: 'slide-drawer' },
+    h('div', { class: 'drawer-header' },
+      h('div', { class: 'drawer-title' },
+        h('span', {}, emp.isHQ ? '👑' : '💻'),
+        h('span', {}, `${emp.name.toUpperCase()} (STAF APP)`)
+      ),
+      closeBtn
+    ),
+    h('div', { class: 'drawer-body' },
+      h('div', { class: 'drawer-metric-grid' },
+        h('div', { class: 'drawer-metric-box' },
+          h('div', { class: 'drawer-metric-label' }, 'STATUS OPERASI'),
+          h('div', { class: 'drawer-metric-val', style: `color: ${emp.status === 'active' ? 'var(--good)' : 'var(--danger)}'` }, emp.status.toUpperCase())
+        ),
+        h('div', { class: 'drawer-metric-box' },
+          h('div', { class: 'drawer-metric-label' }, 'PORT NETWORK'),
+          h('div', { class: 'drawer-metric-val' }, emp.port ? `:${emp.port}` : 'NO-PORT')
+        ),
+        h('div', { class: 'drawer-metric-box' },
+          h('div', { class: 'drawer-metric-label' }, 'BEBAN CPU REAL-TIME'),
+          h('div', { class: 'drawer-metric-val' }, `${cpuVal}%`)
+        ),
+        h('div', { class: 'drawer-metric-box' },
+          h('div', { class: 'drawer-metric-label' }, 'MEMORI CGROUP'),
+          h('div', { class: 'drawer-metric-val' }, memVal)
+        )
+      ),
+      h('div', { class: 'drawer-actions' }, ...actionButtons),
+      h('div', { class: 'drawer-logs-header' },
+        h('span', {}, 'JOURNALCTL / SERVICE LOGS'),
+        h('button', { class: 'ghost', style: 'padding: 2px 6px; font-size: 10px;', onclick: loadLogs }, 'Segarkan')
+      ),
+      logBox
+    )
+  );
+
+  document.body.appendChild(drawer);
+  requestAnimationFrame(() => drawer.classList.add('open'));
+  activeDrawer = drawer;
+
+  async function loadLogs() {
+    logBox.textContent = 'Mengambil log service...';
+    try {
+      const res = await api(`apps/${emp.id}/logs`, 'GET');
+      logBox.textContent = res.logs || 'Belum ada catatan log terbaru.';
+      logBox.scrollTop = logBox.scrollHeight;
+    } catch (e) {
+      logBox.textContent = 'Gagal memuat log: ' + e.message;
+    }
+  }
+
+  loadLogs();
+}
 
 async function renderCity() {
   if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
@@ -940,6 +1057,8 @@ async function renderCity() {
     try { threeRenderer.dispose(); } catch (_) {}
     threeRenderer = null;
   }
+  closeSlideDrawer();
+
   const topBar = await sysbar();
   let d = { apps: [] };
   try { d = await api('apps'); } catch (_) {}
@@ -957,23 +1076,23 @@ async function renderCity() {
     }
   }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
 
-  const container3D = h('div', { id: 'office3d-container', style: { width: '100%', height: '520px', position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0a100c' } });
+  const container3D = h('div', { id: 'office3d-container', style: { width: '100%', height: '560px', position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#0a100c' } });
   const canvasWrap = h('div', { class: 'city-canvas-wrapper', style: { position: 'relative' } },
     container3D,
     h('div', { class: 'city-badge', style: { display: 'flex', alignItems: 'center', gap: '8px' } },
       h('span', { class: 'dot' }),
-      'Hermes3D Workspace • True 3D WebGL (Orbit & Zoom) • 24 FPS Fixed',
+      'Mastermind HQ • Virtual 3D Office • Top-Down Isometric • 24 FPS',
       sfxBtn
     ),
-    h('div', { class: 'city-instructions' }, '🖱️ Putar: Klik & Tarik Mouse • Zoom: Scroll • Klik Pegawai / Server / Meja Rapat')
+    h('div', { class: 'city-instructions' }, '🖱️ Putar: Klik & Tarik • Zoom: Scroll • Klik Pekerja untuk Membuka Slide Drawer Kontrol & Live Logs')
   );
 
   const cityCard = h('div', { class: 'card city-container' },
     h('div', {},
-      h('h3', {}, '🏢 KANTOR VIRTUAL HERMES3D MASTERMIND (TRUE 3D)'),
+      h('h3', {}, '🏢 MASTERMIND HQ (VIRTUAL 3D OFFICE & SERVICE MANAGER)'),
       h('p', { class: 'dim', style: { fontSize: '11px;' } },
-        'Kantor 3D sejati berbasis WebGL (Three.js) yang dirender 100% di browser Anda (Beban CPU server Odroid C2 = 0%). ' +
-        'Anda dapat memutar sudut kamera (Orbit 360°), zoom in/out, dan mengontrol service app yang menjadi staf di kantor ini!'
+        'Denah kantor virtual top-down isometrik berbasis Three.js di-render 100% di browser Anda (Beban CPU Odroid-C2 = 0%). ' +
+        'Pekerja procedural beranimasi multi-joint sesuai metrik CPU/RAM real-time, dikomandoi oleh Mastermind di Ruang Kaca.'
       )
     ),
     canvasWrap
@@ -981,21 +1100,21 @@ async function renderCity() {
 
   view.replaceChildren(...[topBar, cityCard].filter(Boolean));
 
-  // Initialize Three.js Scene
   if (typeof THREE === 'undefined') {
     container3D.appendChild(h('p', { class: 'err', style: { padding: '20px' } }, 'Gagal memuat modul Three.js.'));
     return;
   }
 
   const width = container3D.clientWidth || 920;
-  const height = 520;
+  const height = 560;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a100c);
-  scene.fog = new THREE.FogExp2(0x0a100c, 0.015);
+  scene.fog = new THREE.FogExp2(0x0a100c, 0.012);
 
-  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-  camera.position.set(0, 18, 26);
+  // Top-Down / High-Angle Isometric Camera (55° tilt from above)
+  const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
+  camera.position.set(0, 24, 22);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setSize(width, height);
@@ -1005,344 +1124,159 @@ async function renderCity() {
   container3D.appendChild(renderer.domElement);
   threeRenderer = renderer;
 
-  // OrbitControls
+  // OrbitControls restricted to Top-Down perspective (cannot clip below floor or flip over top)
   let controls = null;
   if (typeof THREE.OrbitControls !== 'undefined') {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI / 2.05; // Prevent camera going below floor
-    controls.minDistance = 8;
-    controls.maxDistance = 45;
+    controls.minPolarAngle = Math.PI / 4.5; // ~40°
+    controls.maxPolarAngle = Math.PI / 2.3; // ~78°
+    controls.minDistance = 6;
+    controls.maxDistance = 42;
     controls.target.set(0, 0, 0);
   }
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
 
-  const dirLight = new THREE.DirectionalLight(0xecfdf5, 0.9);
-  dirLight.position.set(15, 25, 15);
+  const dirLight = new THREE.DirectionalLight(0xf0fdf4, 0.95);
+  dirLight.position.set(16, 30, 16);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.width = 1024;
   dirLight.shadow.mapSize.height = 1024;
   dirLight.shadow.camera.near = 0.5;
-  dirLight.shadow.camera.far = 60;
-  dirLight.shadow.camera.left = -20;
-  dirLight.shadow.camera.right = 20;
-  dirLight.shadow.camera.top = 20;
-  dirLight.shadow.camera.bottom = -20;
+  dirLight.shadow.camera.far = 70;
+  dirLight.shadow.camera.left = -22;
+  dirLight.shadow.camera.right = 22;
+  dirLight.shadow.camera.top = 22;
+  dirLight.shadow.camera.bottom = -22;
   scene.add(dirLight);
 
-  // Accent Colored Lights for Hermes3D Aesthetic
-  const serverGlowLight = new THREE.PointLight(0x4299e1, 1.2, 16);
-  serverGlowLight.position.set(7, 3, -6);
-  scene.add(serverGlowLight);
+  // Add Office Architecture
+  const office = window.OfficeWorld.createOfficeScene();
+  scene.add(office.world);
 
-  const huddleGlowLight = new THREE.PointLight(0x8ac275, 1.0, 16);
-  huddleGlowLight.position.set(-6, 3, 5);
-  scene.add(huddleGlowLight);
-
-  // 1. Office Floor (4 Colored Zones)
-  // Work Area: X: -12..0, Z: -12..0 (Green parquet)
-  // Server Room: X: 0..12, Z: -12..0 (Tech Dark Metal)
-  // Huddle Area: X: -12..0, Z: 0..12 (Warm Boardroom Wood)
-  // Pantry & Lounge: X: 0..12, Z: 0..12 (Comfortable Carpet)
-
-  function createZoneTile(x, z, w, d, color) {
-    const geo = new THREE.BoxGeometry(w, 0.4, d);
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, -0.2, z);
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    return mesh;
-  }
-
-  createZoneTile(-6, -6, 12, 12, 0x16241c); // Zone 1: Workstations
-  createZoneTile(6, -6, 12, 12, 0x18242a);  // Zone 2: Server Room
-  createZoneTile(-6, 6, 12, 12, 0x242d26);  // Zone 3: Huddle Conference
-  createZoneTile(6, 6, 12, 12, 0x2c2e2d);   // Zone 4: Pantry Lounge
-
-  // Floor Grid lines
-  const gridHelper = new THREE.GridHelper(24, 24, 0x273b30, 0x1e2c24);
-  gridHelper.position.y = 0.01;
-  scene.add(gridHelper);
-
-  // Perimeter Low Walls
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1f2b23, roughness: 0.8 });
-  function addWall(x, z, w, d, h) {
-    const geo = new THREE.BoxGeometry(w, h, d);
-    const mesh = new THREE.Mesh(geo, wallMat);
-    mesh.position.set(x, h / 2, z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-  }
-  addWall(0, -12.1, 24.2, 0.4, 1.8);
-  addWall(-12.1, 0, 0.4, 24.2, 1.8);
-  addWall(12.1, 0, 0.4, 24.2, 1.8);
-
-  // Zone 3D Furniture Storage
+  // Interactive Click Raycasting list
   const interactiveObjects = [];
+  if (office.coffeeMaker) interactiveObjects.push(office.coffeeMaker);
 
-  // Workstations (3D Desks with Monitors)
+  // Active Projectiles List
+  const activeProjectiles = [];
+
+  // Workstation Grid layout
   const deskLocations = [
-    { x: -8, z: -8, name: 'Meja Mastermind HQ' },
-    { x: -4, z: -8 },
-    { x: -8, z: -4 },
-    { x: -4, z: -4 },
-    { x: -8, z: -1 },
-    { x: -4, z: -1 }
+    { x: -5.5, z: -3.5 },
+    { x: 0, z: -3.5 },
+    { x: 5.5, z: -3.5 },
+    { x: -5.5, z: 2.5 },
+    { x: 0, z: 2.5 },
+    { x: 5.5, z: 2.5 }
   ];
 
-  const deskMat = new THREE.MeshStandardMaterial({ color: 0x2d3e34, roughness: 0.6 });
-  const pcMat = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
-  const screenMatActive = new THREE.MeshBasicMaterial({ color: 0x8ac275 });
-  const screenMatIdle = new THREE.MeshBasicMaterial({ color: 0x2d3748 });
-
-  deskLocations.forEach(dl => {
-    // Desk Top
-    const dGeo = new THREE.BoxGeometry(2.4, 0.15, 1.4);
-    const dMesh = new THREE.Mesh(dGeo, deskMat);
-    dMesh.position.set(dl.x, 1.2, dl.z);
-    dMesh.castShadow = true;
-    dMesh.receiveShadow = true;
-    scene.add(dMesh);
-
-    // Legs
-    [-1, 1].forEach(lx => {
-      [-0.5, 0.5].forEach(lz => {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2), pcMat);
-        leg.position.set(dl.x + lx * 1.0, 0.6, dl.z + lz * 0.5);
-        leg.castShadow = true;
-        scene.add(leg);
-      });
-    });
-
-    // Monitor
-    const mon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.08), pcMat);
-    mon.position.set(dl.x, 1.7, dl.z - 0.35);
-    mon.castShadow = true;
-    scene.add(mon);
-
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), screenMatActive);
-    scr.position.set(dl.x, 1.7, dl.z - 0.3);
-    scene.add(scr);
-  });
-
-  // Server Room (Zone 2): 3D Server Racks
-  const serverRackMeshes = [];
-  [-3, 0, 3].forEach((offset, idx) => {
-    const srvBox = new THREE.Mesh(new THREE.BoxGeometry(1.6, 4.2, 1.8), new THREE.MeshStandardMaterial({ color: 0x18201a, roughness: 0.4, metalness: 0.6 }));
-    srvBox.position.set(4 + offset * 1.8, 2.1, -8);
-    srvBox.castShadow = true;
-    srvBox.receiveShadow = true;
-    srvBox.userData = { type: 'server' };
-    scene.add(srvBox);
-    interactiveObjects.push(srvBox);
-    serverRackMeshes.push(srvBox);
-
-    // Server Tray Lines with blinking emissive LED lights
-    for (let i = 0; i < 5; i++) {
-      const led = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: 0x48bb78 }));
-      led.position.set(4 + offset * 1.8 - 0.5 + i * 0.25, 0.8 + i * 0.7, -7.08);
-      scene.add(led);
-    }
-  });
-
-  // Huddle Conference Table (Zone 3)
-  const huddleTable = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.4, 2.4, 0.2, 32),
-    new THREE.MeshStandardMaterial({ color: 0x3d5042, roughness: 0.6 })
-  );
-  huddleTable.position.set(-6, 1.2, 6);
-  huddleTable.castShadow = true;
-  huddleTable.receiveShadow = true;
-  huddleTable.userData = { type: 'huddle' };
-  scene.add(huddleTable);
-  interactiveObjects.push(huddleTable);
-
-  const huddleStand = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 1.2, 16), pcMat);
-  huddleStand.position.set(-6, 0.6, 6);
-  scene.add(huddleStand);
-
-  // Hologram center on Huddle Table
-  const holoGeo = new THREE.OctahedronGeometry(0.4, 0);
-  const holoMat = new THREE.MeshBasicMaterial({ color: 0x8ac275, wireframe: true });
-  const hologram = new THREE.Mesh(holoGeo, holoMat);
-  hologram.position.set(-6, 2.0, 6);
-  scene.add(hologram);
-
-  // Whiteboard
-  const wb = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.0, 0.1), new THREE.MeshStandardMaterial({ color: 0xf7fafc, roughness: 0.3 }));
-  wb.position.set(-10, 2.2, 6);
-  wb.rotation.y = Math.PI / 2;
-  scene.add(wb);
-
-  // Pantry & Lounge (Zone 4): Coffee Machine & Beds
-  const coffeeCounter = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.2), new THREE.MeshStandardMaterial({ color: 0x313d35 }));
-  coffeeCounter.position.set(9, 0.65, 3);
-  coffeeCounter.castShadow = true;
-  coffeeCounter.userData = { type: 'coffee' };
-  scene.add(coffeeCounter);
-  interactiveObjects.push(coffeeCounter);
-
-  const coffeeMachine = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 0.7), new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.3 }));
-  coffeeMachine.position.set(9, 1.75, 3);
-  coffeeMachine.castShadow = true;
-  scene.add(coffeeMachine);
-
-  // Lounge Beds
-  const bedLocations = [
-    { x: 5, z: 8 },
-    { x: 8, z: 8 },
-    { x: 5, z: 10.5 },
-    { x: 8, z: 10.5 }
-  ];
-
-  bedLocations.forEach(bl => {
-    const bFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.6), new THREE.MeshStandardMaterial({ color: 0x242e28 }));
-    bFrame.position.set(bl.x, 0.2, bl.z);
-    bFrame.castShadow = true;
-    scene.add(bFrame);
-
-    const bMat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 1.6), new THREE.MeshStandardMaterial({ color: 0x3182ce, roughness: 0.8 }));
-    bMat.position.set(bl.x, 0.4, bl.z + 0.4);
-    scene.add(bMat);
-
-    const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-    pillow.position.set(bl.x, 0.45, bl.z - 0.8);
-    scene.add(pillow);
-  });
-
-  // 2. 3D Avatar Employees (Hermes3D Agent Workers)
   const employees = [];
 
-  function createAgentAvatar(emp) {
-    const group = new THREE.Group();
-
-    // Body / Shirt
-    const bodyGeo = new THREE.CylinderGeometry(0.35, 0.4, 1.0, 16);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: emp.color, roughness: 0.6 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 1.0;
-    body.castShadow = true;
-    group.add(body);
-
-    // Head
-    const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xf6ad55, roughness: 0.7 });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 1.75;
-    head.castShadow = true;
-    group.add(head);
-
-    // Hair
-    const hairGeo = new THREE.SphereGeometry(0.34, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const hairMat = new THREE.MeshStandardMaterial({ color: emp.hairColor, roughness: 0.9 });
-    const hair = new THREE.Mesh(hairGeo, hairMat);
-    hair.position.y = 1.8;
-    group.add(hair);
-
-    // Legs
-    const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x1a202c });
-    [-0.18, 0.18].forEach(lx => {
-      const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(lx, 0.35, 0);
-      leg.castShadow = true;
-      group.add(leg);
-    });
-
-    // Sims 1 Plumbob / Indicator above head
-    const plumbobGeo = new THREE.OctahedronGeometry(0.24, 0);
-    const plumbobMat = new THREE.MeshBasicMaterial({ color: emp.status === 'active' ? 0x48bb78 : 0xe53e3e });
-    const plumbob = new THREE.Mesh(plumbobGeo, plumbobMat);
-    plumbob.position.y = 2.45;
-    group.add(plumbob);
-
-    // Text Label Sprite
-    const canvasText = document.createElement('canvas');
-    canvasText.width = 256; canvasText.height = 64;
-    const tCtx = canvasText.getContext('2d');
-    tCtx.fillStyle = '#0e1511ee';
-    tCtx.fillRect(10, 10, 236, 44);
-    tCtx.strokeStyle = '#8ac275';
-    tCtx.lineWidth = 3;
-    tCtx.strokeRect(10, 10, 236, 44);
-    tCtx.fillStyle = '#eaf3eb';
-    tCtx.font = 'bold 24px monospace';
-    tCtx.textAlign = 'center';
-    tCtx.fillText(emp.name.slice(0, 14), 128, 41);
-
-    const texture = new THREE.CanvasTexture(canvasText);
-    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.position.y = 2.95;
-    sprite.scale.set(1.8, 0.45, 1);
-    group.add(sprite);
-
-    group.position.set(emp.curX, 0, emp.curZ);
-    group.userData = { type: 'employee', emp };
-    scene.add(group);
-
-    emp.meshGroup = group;
-    emp.plumbob = plumbob;
-    interactiveObjects.push(body);
-    body.userData = { type: 'employee', emp };
-  }
-
-  // Pegawai 0: Mastermind Chief
-  employees.push({
+  // 1. Create Mastermind (The Boss Kernel) inside Glass Room
+  const bossEmp = {
     id: 'mastermind',
     name: 'Mastermind',
     status: 'active',
-    deskX: deskLocations[0].x,
-    deskZ: deskLocations[0].z + 0.8,
-    bedX: bedLocations[0].x,
-    bedZ: bedLocations[0].z,
-    curX: deskLocations[0].x,
-    curZ: deskLocations[0].z + 0.8,
-    targetX: deskLocations[0].x,
-    targetZ: deskLocations[0].z + 0.8,
-    color: 0x8ac275,
-    hairColor: 0x2d3748,
     isHQ: true,
-    restarting: false,
-    port: 8443
-  });
+    deskPos: new THREE.Vector3(0, 0, -9.5),
+    loungePos: office.loungePos,
+    curPos: new THREE.Vector3(0, 0, -9.5),
+    targetPos: new THREE.Vector3(0, 0, -9.5),
+    cpu_pct: 12.0,
+    mem_mb: 8,
+    category: 'kernel',
+    hairColor: 0x111827
+  };
 
+  const bossWorker3D = window.WorkerFactory.createWorkerCharacter(bossEmp);
+  bossWorker3D.root.position.copy(bossEmp.curPos);
+  scene.add(bossWorker3D.root);
+  bossEmp.worker3D = bossWorker3D;
+
+  const bossChair3D = window.WorkerFactory.createSwivelChair();
+  bossChair3D.root.position.set(0, 0, -9.2);
+  scene.add(bossChair3D.root);
+  bossEmp.chair3D = bossChair3D;
+
+  employees.push(bossEmp);
+  interactiveObjects.push(bossWorker3D.torso || bossWorker3D.root);
+  (bossWorker3D.torso || bossWorker3D.root).userData = { type: 'employee', emp: bossEmp };
+
+  // 2. Create Workers for Installed Applications
   installedApps.forEach((app, idx) => {
-    const dIdx = (idx + 1) % deskLocations.length;
-    const bIdx = (idx + 1) % bedLocations.length;
+    const dLoc = deskLocations[idx % deskLocations.length];
     const isAct = app.status === 'active';
-    const desk = deskLocations[dIdx];
-    const bed = bedLocations[bIdx];
+    const cpuPct = app.cpu_pct != null ? app.cpu_pct : (isAct ? 18.0 + (idx * 5) % 30 : 0);
+    const cat = app.source === 'docker' ? 'docker' : (app.id.includes('db') || app.id.includes('sql') ? 'database' : 'web');
+
+    // Create L-Desk
+    const deskObj = window.WorkerFactory.createLDesk(app.id, app.status, cpuPct);
+    deskObj.root.position.set(dLoc.x, 0, dLoc.z);
+    scene.add(deskObj.root);
+
+    // Create Swivel Chair
+    const chairObj = window.WorkerFactory.createSwivelChair();
+    chairObj.root.position.set(dLoc.x, 0, dLoc.z + 0.85);
+    scene.add(chairObj.root);
+
+    const loungeTarget = new THREE.Vector3(
+      office.loungePos.x + (idx % 3) * 1.4 - 1.4,
+      0,
+      office.loungePos.z + Math.floor(idx / 3) * 1.4
+    );
 
     const emp = {
       id: app.id,
       name: app.id,
-      app,
       status: app.status,
       port: app.port || 0,
-      deskX: desk.x,
-      deskZ: desk.z + 0.8,
-      bedX: bed.x,
-      bedZ: bed.z,
-      curX: isAct ? desk.x : bed.x,
-      curZ: isAct ? (desk.z + 0.8) : bed.z,
-      targetX: isAct ? desk.x : bed.x,
-      targetZ: isAct ? (desk.z + 0.8) : bed.z,
-      color: idx % 4 === 0 ? 0x4255ff : idx % 4 === 1 ? 0xd99166 : idx % 4 === 2 ? 0x63a863 : 0xe53e3e,
-      hairColor: idx % 2 === 0 ? 0x1f2937 : 0x92400e,
       isHQ: false,
-      restarting: false
+      deskPos: new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85),
+      loungePos: loungeTarget,
+      curPos: isAct ? new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85) : loungeTarget.clone(),
+      targetPos: isAct ? new THREE.Vector3(dLoc.x, 0, dLoc.z + 0.85) : loungeTarget.clone(),
+      cpu_pct: cpuPct,
+      mem_mb: app.mem_mb || 48,
+      category: cat,
+      deskObj,
+      chairObj,
+      color: idx % 3 === 0 ? 0x2563eb : (idx % 3 === 1 ? 0xd97706 : 0x059669),
+      hairColor: idx % 2 === 0 ? 0x1e293b : 0x78350f
     };
+
+    const worker3D = window.WorkerFactory.createWorkerCharacter(emp);
+    worker3D.root.position.copy(emp.curPos);
+    scene.add(worker3D.root);
+    emp.worker3D = worker3D;
+
     employees.push(emp);
+    interactiveObjects.push(worker3D.torso || worker3D.root);
+    (worker3D.torso || worker3D.root).userData = { type: 'employee', emp };
   });
 
-  employees.forEach(createAgentAvatar);
+  // Action Projectile Trigger handler
+  function triggerActionProjectile(action, targetEmp) {
+    playSfx('chime');
+    const projectile = window.OfficeWorld.createDataProjectile(bossEmp.curPos, targetEmp.deskPos, () => {
+      playSfx('beep');
+      levelUp(`⚡ [DATA PACKET] ${action.toUpperCase()} ${targetEmp.name}`);
+      if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
+        targetEmp.deskObj.beacon.material.color.setHex(0x00f5d4);
+        setTimeout(() => {
+          if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
+            targetEmp.deskObj.beacon.material.color.setHex(0x48bb78);
+          }
+        }, 1200);
+      }
+    });
+    scene.add(projectile.group);
+    activeProjectiles.push(projectile);
+  }
 
   // Click & Raycasting Detection
   const raycaster = new THREE.Raycaster();
@@ -1354,160 +1288,33 @@ async function renderCity() {
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(interactiveObjects, false);
+    const intersects = raycaster.intersectObjects(interactiveObjects, true);
 
     if (intersects.length > 0) {
-      const hit = intersects[0].object;
-      const type = hit.userData.type;
+      let hit = intersects[0].object;
+      while (hit && !hit.userData.type && hit.parent) {
+        hit = hit.parent;
+      }
+      const type = hit ? hit.userData.type : null;
 
       if (type === 'employee') {
-        showEmpQuickMenu(hit.userData.emp);
-      } else if (type === 'server') {
-        showServerRoomModal();
-      } else if (type === 'huddle') {
-        showStandupModal();
+        const emp = hit.userData.emp;
+        playSfx('beep');
+        // Smooth camera lerp target towards clicked worker
+        if (controls) {
+          controls.target.set(emp.deskPos.x, 1.2, emp.deskPos.z);
+        }
+        openSlideDrawer(emp, triggerActionProjectile);
       } else if (type === 'coffee') {
         playSfx('chime');
-        toast('☕ Mesin Kopi Hermes3D: Secangkir kopi hangat disajikan untuk staf service!');
+        toast('☕ Mesin Kopi HQ: Secangkir kopi hangat diseduh untuk pekerja service!');
       }
     }
   }
 
   renderer.domElement.addEventListener('click', onCanvasClick);
 
-  // Modals for Interactive Features
-  function showStandupModal() {
-    playSfx('beep');
-    let modal = document.getElementById('standup-modal');
-    if (modal) modal.remove();
-
-    const rows = employees.map(e => h('tr', {},
-      h('td', { style: 'font-weight: bold;' }, e.name),
-      h('td', {}, h('span', { class: 'tag ' + (e.status === 'active' ? 'ok-badge' : 's-stopped') }, e.status.toUpperCase())),
-      h('td', { style: 'font-family: monospace; color: var(--accent);' }, e.port ? `:${e.port}` : '-'),
-      h('td', { class: 'dim', style: 'font-size: 11px;' }, e.status === 'active' ? 'Online di meja kerja' : 'Offline di kamar tidur')
-    ));
-
-    modal = h('div', { id: 'standup-modal', class: 'term-modal' },
-      h('div', { class: 'term-window', style: 'max-width: 540px; padding: 18px;' },
-        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
-          h('h3', { style: 'font-size: 14px; margin: 0;' }, '📋 LAPORAN RAPAT STANDUP HERMES3D'),
-          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
-        ),
-        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 10px;' }, 'Status operasional seluruh armada service app yang bertugas di Mastermind:'),
-        h('table', {},
-          h('tr', {}, h('th', {}, 'PEGAWAI / APP'), h('th', {}, 'STATUS'), h('th', {}, 'PORT'), h('th', {}, 'KONDISI')),
-          ...rows
-        ),
-        h('div', { style: 'margin-top: 14px; text-align: right;' },
-          h('button', { class: 'good', onclick: () => modal.remove() }, 'Tutup Rapat')
-        )
-      )
-    );
-    document.body.appendChild(modal);
-  }
-
-  async function showServerRoomModal() {
-    playSfx('beep');
-    let modal = document.getElementById('server-modal');
-    if (modal) modal.remove();
-
-    let sys = { load: '0.1', mem_total_mb: 2048, mem_avail_mb: 1400, temp_c: 42, uptime_s: 3600 };
-    try { sys = await api('system'); } catch (_) {}
-    const usedMem = sys.mem_total_mb - sys.mem_avail_mb;
-
-    modal = h('div', { id: 'server-modal', class: 'term-modal' },
-      h('div', { class: 'term-window', style: 'max-width: 480px; padding: 18px;' },
-        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
-          h('h3', { style: 'font-size: 14px; margin: 0;' }, '🖥 RAK SERVER & HARDWARE ODROID C2'),
-          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
-        ),
-        h('div', { style: 'background: var(--panel2); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; margin-bottom: 12px;' },
-          h('div', { style: 'margin-bottom: 6px;' }, `⚡ BEBAN CPU LOAD: ${sys.load}`),
-          h('div', { style: 'margin-bottom: 6px;' }, `🧠 PEMAKAIAN RAM: ${usedMem} / ${sys.mem_total_mb} MB`),
-          h('div', { style: 'margin-bottom: 6px;' }, `🌡 SUHU CHIPSET: ${sys.temp_c != null ? sys.temp_c + '°C' : '-'}`),
-          h('div', {}, `⏱ UPTIME SISTEM: ${Math.floor(sys.uptime_s / 3600)} Jam`)
-        ),
-        h('p', { class: 'dim', style: 'font-size: 11px;' }, 'Mengelola isolasi cgroups slice & namespace kernel untuk service aplikasi.'),
-        h('div', { style: 'margin-top: 14px; text-align: right;' },
-          h('button', { class: 'good', onclick: () => modal.remove() }, 'Tutup Rak')
-        )
-      )
-    );
-    document.body.appendChild(modal);
-  }
-
-  function showEmpQuickMenu(emp) {
-    playSfx('beep');
-    let modal = document.getElementById('emp-quick-modal');
-    if (modal) modal.remove();
-
-    const host = window.location.hostname;
-    const directHttp = `http://${host}:${emp.port}`;
-
-    const acts = [];
-    if (!emp.isHQ) {
-      if (emp.status === 'active') {
-        acts.push(h('button', { class: 'ghost', onclick: async () => {
-          modal.remove();
-          emp.status = 'inactive';
-          emp.plumbob.material.color.setHex(0xe53e3e);
-          toast(`Menghentikan ${emp.name}... Pegawai berjalan ke kamar istirahat.`);
-          await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
-          render();
-        } }, '⏹ Hentikan (Tidur)'));
-        acts.push(h('button', { class: 'good', onclick: async () => {
-          modal.remove();
-          emp.restarting = true;
-          playSfx('chime');
-          toast(`Me-restart ${emp.name}... Pegawai menuju ruang server.`);
-          await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
-          setTimeout(() => { emp.restarting = false; render(); }, 1800);
-        } }, '🔄 Restart (Pemeliharaan)'));
-      } else {
-        acts.push(h('button', { class: 'good', onclick: async () => {
-          modal.remove();
-          emp.status = 'active';
-          emp.plumbob.material.color.setHex(0x48bb78);
-          playSfx('chime');
-          toast(`Menjalankan ${emp.name}... Pegawai bangun & menuju meja kerja.`);
-          await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
-          render();
-        } }, '▶ Mulai (Bekerja)'));
-      }
-
-      if (emp.port > 0) {
-        acts.push(h('a', {
-          href: directHttp,
-          target: '_blank',
-          rel: 'noopener noreferrer',
-          class: 'btn good',
-          style: 'padding: 6px 12px; text-decoration: none; font-size: 11px;',
-          onclick: () => modal.remove()
-        }, `Buka HTTP :${emp.port} ↗`));
-      }
-    }
-
-    modal = h('div', { id: 'emp-quick-modal', class: 'term-modal' },
-      h('div', { class: 'term-window', style: 'max-width: 400px; padding: 16px;' },
-        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' },
-          h('h3', { style: 'font-size: 14px; margin: 0;' }, `👤 Pegawai App: ${emp.name}`),
-          h('button', { class: 'ghost', style: 'padding: 2px 8px;', onclick: () => modal.remove() }, '✕')
-        ),
-        h('p', { class: 'dim', style: 'font-size: 11px; margin-bottom: 8px;' },
-          emp.isHQ ? 'Markas Mastermind: Penegak hukum dan pengawas utama sistem.' :
-          `Status: ${emp.status.toUpperCase()} • Port: :${emp.port || 'Belum disetel'}`
-        ),
-        h('div', { class: 'row', style: 'gap: 8px; flex-wrap: wrap; margin-top: 14px;' },
-          ...acts,
-          h('button', { class: 'ghost', onclick: () => { modal.remove(); tab = 'apps'; render(); } }, 'Detail Lengkap ↗')
-        )
-      )
-    );
-    document.body.appendChild(modal);
-  }
-
-  // 3D Animation Loop locked at fixed 24 FPS
+  // 3D Animation Loop locked at fixed 24 FPS with delta-time throttling
   let tick = 0;
   const THREE_FPS = 24;
   const THREE_INTERVAL = 1000 / THREE_FPS;
@@ -1524,53 +1331,99 @@ async function renderCity() {
 
     if (controls) controls.update();
 
-    // Rotate Hologram on Huddle Table
-    hologram.rotation.y += 0.04;
-    hologram.rotation.x = Math.sin(tick * 0.05) * 0.2;
-
-    // Animate Employees position & plumbob rotation
-    employees.forEach(emp => {
-      if (emp.restarting) {
-        emp.targetX = 4;
-        emp.targetZ = -5.8;
-      } else if (emp.status === 'active') {
-        // Mostly at desk, periodically huddle
-        if ((tick + emp.port) % 480 > 400) {
-          emp.targetX = -6 + Math.cos(emp.port) * 2.5;
-          emp.targetZ = 6 + Math.sin(emp.port) * 2.5;
-        } else {
-          emp.targetX = emp.deskX;
-          emp.targetZ = emp.deskZ;
-        }
-      } else {
-        emp.targetX = emp.bedX;
-        emp.targetZ = emp.bedZ;
+    // Update active projectiles
+    for (let p = activeProjectiles.length - 1; p >= 0; p--) {
+      const active = activeProjectiles[p].update();
+      if (!active) {
+        scene.remove(activeProjectiles[p].group);
+        activeProjectiles.splice(p, 1);
       }
+    }
 
-      // Smooth step movement
-      const dx = emp.targetX - emp.curX;
-      const dz = emp.targetZ - emp.curZ;
+    // Check SoC thermal state on Mastermind boss office
+    let sysTemp = 45;
+    if (window.__lastSysTemp) sysTemp = window.__lastSysTemp;
+    if (sysTemp > 75) {
+      office.socAlertLight.intensity = Math.sin(tick * 0.3) > 0 ? 3.0 : 0.5;
+      bossEmp.targetPos.x = Math.sin(tick * 0.08) * 2.2;
+    } else {
+      office.socAlertLight.intensity = 0;
+      bossEmp.targetPos.set(0, 0, -9.5);
+    }
+
+    // Animate Employees Choreography State Machine
+    employees.forEach(emp => {
+      const isAct = emp.status === 'active';
+      const cpu = emp.cpu_pct || 0;
+      emp.targetPos = isAct ? emp.deskPos : emp.loungePos;
+
+      // Smooth step pathfinding movement
+      const dx = emp.targetPos.x - emp.curPos.x;
+      const dz = emp.targetPos.z - emp.curPos.z;
       const dist = Math.hypot(dx, dz);
       const isWalking = dist > 0.08;
 
       if (isWalking) {
-        emp.curX += (dx / dist) * 0.08;
-        emp.curZ += (dz / dist) * 0.08;
-        emp.meshGroup.rotation.y = Math.atan2(dx, dz);
-        if (tick % 12 === 0) playSfx('step');
-      } else if (emp.status === 'active' && !emp.restarting && Math.random() < 0.02) {
-        playSfx('type');
+        emp.curPos.x += (dx / dist) * 0.1;
+        emp.curPos.z += (dz / dist) * 0.1;
+        emp.worker3D.root.rotation.y = Math.atan2(dx, dz);
+        // Leg swing animation while walking
+        const legBob = Math.sin(tick * 0.6) * 0.08;
+        emp.worker3D.root.position.y = Math.abs(legBob);
+      } else {
+        emp.worker3D.root.position.y = 0;
+        emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, 0, 0.1);
+
+        // State Machine Choreography:
+        if (emp.isHQ) {
+          // Boss scanning room
+          emp.worker3D.root.rotation.y = Math.sin(tick * 0.03) * 0.3;
+          if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = Math.sin(tick * 0.03) * 0.3;
+        } else if (!isAct) {
+          // STOPPED: Sleeping in lounge
+          emp.worker3D.head.rotation.x = 0.35; // Head nodded off
+          emp.worker3D.leftArm.upperArm.rotation.x = 0.1;
+          emp.worker3D.rightArm.upperArm.rotation.x = 0.1;
+        } else if (cpu > 65) {
+          // OVERLOAD: Typing furiously 3x, head shaking
+          const furious = tick * 1.2;
+          emp.worker3D.leftArm.upperArm.rotation.x = -0.7 + Math.sin(furious) * 0.25;
+          emp.worker3D.rightArm.upperArm.rotation.x = -0.7 + Math.cos(furious) * 0.25;
+          emp.worker3D.head.rotation.y = Math.sin(tick * 0.8) * 0.18;
+          if (emp.chair3D) emp.chair3D.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
+        } else if (cpu >= 5) {
+          // WORKING: Lean forward, rapid typing
+          const speed = tick * 0.5;
+          emp.worker3D.torso.rotation.x = 0.12;
+          emp.worker3D.leftArm.upperArm.rotation.x = -0.6 + Math.sin(speed) * 0.15;
+          emp.worker3D.rightArm.upperArm.rotation.x = -0.6 + Math.cos(speed) * 0.15;
+          emp.worker3D.head.rotation.x = 0.15;
+        } else {
+          // IDLE: Lean back, occasional swivel, coffee sip
+          emp.worker3D.torso.rotation.x = -0.08;
+          emp.worker3D.head.rotation.x = 0;
+          const swivel = Math.sin(tick * 0.04) * 0.12;
+          if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = swivel;
+          emp.worker3D.root.rotation.y = swivel;
+
+          // Occasional coffee sip
+          if (Math.sin(tick * 0.02) > 0.85) {
+            emp.worker3D.rightArm.upperArm.rotation.x = -1.1;
+            emp.worker3D.rightArm.forearmGroup.rotation.x = -0.6;
+          } else {
+            emp.worker3D.rightArm.upperArm.rotation.x = -0.2;
+            emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+          }
+        }
       }
 
-      emp.meshGroup.position.x = emp.curX;
-      emp.meshGroup.position.z = emp.curZ;
+      emp.worker3D.root.position.x = emp.curPos.x;
+      emp.worker3D.root.position.z = emp.curPos.z;
 
-      // Bobbing animation
-      const bob = isWalking ? Math.sin(tick * 0.5) * 0.1 : (emp.status === 'active' ? Math.sin(tick * 0.15) * 0.03 : 0);
-      emp.meshGroup.position.y = bob;
-
-      // Spin plumbob
-      if (emp.plumbob) emp.plumbob.rotation.y += 0.05;
+      // Spin Plumbob
+      if (emp.worker3D.plumbob) {
+        emp.worker3D.plumbob.rotation.y += 0.06;
+      }
     });
 
     renderer.render(scene, camera);

@@ -36,12 +36,51 @@ const SYSTEM_EXCLUDES: &[&str] = &[
     "avahi", "rsyslog", "udev", "wpa_supplicant", "networking", "dhcpcd",
     "fail2ban", "apparmor", "emergency", "rescue", "rc-local", "kmod",
     "ufw", "nftables", "iptables", "bluetooth", "cups", "smartmontools",
-    "polkit", "modprobe", "apt", "dpkg", "syslog", "journal", "dropbear"
+    "polkit", "modprobe", "apt", "dpkg", "syslog", "journal", "dropbear",
+    "kthreadd", "ksoftirqd", "migration", "rcu_", "kworker", "user@", "session-"
 ];
 
 pub fn is_system_service(name: &str) -> bool {
     let lower = name.to_lowercase();
     SYSTEM_EXCLUDES.iter().any(|&ex| lower.contains(ex))
+}
+
+pub fn scan_docker() -> Vec<Value> {
+    let mut out = Vec::new();
+    // Jalankan docker ps --format "{{json .}}" jika docker tersedia di path
+    if let Ok(output) = std::process::Command::new("docker")
+        .args(["ps", "-a", "--format", "{{json .}}"])
+        .output()
+    {
+        if output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                if let Ok(val) = serde_json::from_str::<Value>(line.trim()) {
+                    let raw_names = val["Names"].as_str().unwrap_or("").trim();
+                    let name = raw_names.split(',').next().unwrap_or("").trim_start_matches('/');
+                    if name.is_empty() { continue; }
+                    let ports_str = val["Ports"].as_str().unwrap_or("");
+                    // Parse port seperti 0.0.0.0:8080->80/tcp
+                    let port = ports_str.split("->").next()
+                        .and_then(|p| p.split(':').next_back())
+                        .and_then(|p| p.parse::<u16>().ok())
+                        .or_else(|| default_app_port(name));
+                    let status = val["Status"].as_str().unwrap_or("");
+                    let running = status.to_lowercase().starts_with("up");
+                    out.push(json!({
+                        "name": format!("docker-{}", name),
+                        "display_name": name,
+                        "exec": format!("docker run (image: {})", val["Image"].as_str().unwrap_or("")),
+                        "port": port,
+                        "source": "docker",
+                        "status": if running { "active" } else { "inactive" },
+                        "category": "docker"
+                    }));
+                }
+            }
+        }
+    }
+    out
 }
 
 pub fn scan() -> Vec<Value> {
@@ -59,6 +98,15 @@ pub fn scan() -> Vec<Value> {
                     if let Some(v) = parse_unit(sname, &t) { out.push(v); }
                 }
             }
+        }
+    }
+    // Gabungkan dengan container docker jika ada
+    let docker_items = scan_docker();
+    for d in docker_items {
+        let name = d["name"].as_str().unwrap_or("").to_string();
+        if !seen.contains(&name) {
+            seen.insert(name);
+            out.push(d);
         }
     }
     out

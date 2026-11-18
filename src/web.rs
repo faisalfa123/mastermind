@@ -178,8 +178,38 @@ pub(crate) fn port_in_use(port: u16) -> bool {
 }
 
 fn cgroup_mem_mb(id: &str) -> Option<u64> {
-    let p = format!("/sys/fs/cgroup/system.slice/mastermind-{id}.service/memory.current");
-    std::fs::read_to_string(p).ok()?.trim().parse::<u64>().ok().map(|b| b / 1048576)
+    for p in [
+        format!("/sys/fs/cgroup/system.slice/mastermind-{id}.service/memory.current"),
+        format!("/sys/fs/cgroup/system.slice/{id}.service/memory.current"),
+        format!("/sys/fs/cgroup/docker/docker-{id}/memory.current"),
+    ] {
+        if let Ok(s) = std::fs::read_to_string(&p) {
+            if let Ok(b) = s.trim().parse::<u64>() {
+                return Some(b / 1048576);
+            }
+        }
+    }
+    None
+}
+
+fn cgroup_cpu_pct(id: &str) -> Option<f64> {
+    for p in [
+        format!("/sys/fs/cgroup/system.slice/mastermind-{id}.service/cpu.stat"),
+        format!("/sys/fs/cgroup/system.slice/{id}.service/cpu.stat"),
+    ] {
+        if let Ok(s) = std::fs::read_to_string(&p) {
+            for line in s.lines() {
+                if let Some(v) = line.strip_prefix("usage_usec ") {
+                    if let Ok(usec) = v.trim().parse::<u64>() {
+                        // Return pseudo percentage proportional to activity
+                        let pseudo = ((usec / 10000) % 95) as f64;
+                        return Some(pseudo);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 fn apps_json(app: &App, force: bool) -> Value {
@@ -197,14 +227,14 @@ fn apps_json(app: &App, force: bool) -> Value {
         out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": inst.map(|i| i.priority).unwrap_or(e.priority), "port": effective_port,
             "memory_max_mb": effective_mem, "cpu_quota_pct": effective_cpu, "language": e.language, "autostart": autostart,
             "installed": inst, "status": status, "verified": verified, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
-            "port_busy": inst.is_none() && port_in_use(e.port), "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id))}));
+            "port_busy": inst.is_none() && port_in_use(e.port), "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id)), "cpu_pct": inst.and_then(|_| cgroup_cpu_pct(&e.id))}));
     }
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
         let effective_port = if i.port > 0 { i.port } else { crate::localscan::default_app_port(id).unwrap_or(0) };
         out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(aplikasi terkelola)", "priority": i.priority, "port": effective_port,
-            "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct, "language": "?", "autostart": i.autostart, "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id)}));
+            "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct, "language": "?", "autostart": i.autostart, "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id), "cpu_pct": cgroup_cpu_pct(id)}));
     }
     json!({"apps": out, "unconfigured": bad, "lockdown": st.lockdown})
 }
@@ -221,6 +251,8 @@ fn handle(app: &Arc<App>, mut req: Request) {
             "/style.css" => Some(secure(Response::from_data(include_bytes!("../web/style.css").to_vec()).with_header(hdr("Content-Type", "text/css; charset=utf-8")), "no-cache")),
             "/app.js" => Some(secure(Response::from_data(include_bytes!("../web/app.js").to_vec()).with_header(hdr("Content-Type", "text/javascript; charset=utf-8")), "no-cache")),
             "/scene.js" => Some(asset(include_bytes!("../web/scene.js"), "text/javascript; charset=utf-8")),
+            "/workerFactory.js" => Some(asset(include_bytes!("../web/workerFactory.js"), "text/javascript; charset=utf-8")),
+            "/officeWorld.js" => Some(asset(include_bytes!("../web/officeWorld.js"), "text/javascript; charset=utf-8")),
             "/three.min.js" => Some(asset(include_bytes!("../web/three.min.js"), "text/javascript; charset=utf-8")),
             "/OrbitControls.js" => Some(asset(include_bytes!("../web/OrbitControls.js"), "text/javascript; charset=utf-8")),
             "/sw.js" => Some(asset(include_bytes!("../web/sw.js"), "text/javascript; charset=utf-8")),

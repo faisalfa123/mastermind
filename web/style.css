@@ -653,3 +653,100 @@ dialog input{margin-top:10px}
   transition: opacity 0.2s;
 }
 .pwa-install-pill:hover { opacity: 0.9; }
+
+/* ==========================================================================
+   SLIDE-OVER DRAWER (HUD KONTROL & REAL-TIME LOGS)
+   ========================================================================== */
+.slide-drawer {
+  position: fixed;
+  top: 0;
+  right: -420px;
+  width: 400px;
+  max-width: 90vw;
+  height: 100vh;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.6);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-drawer.open {
+  right: 0;
+}
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+}
+.drawer-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drawer-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.drawer-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.drawer-metric-box {
+  background: var(--panel2);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.drawer-metric-label {
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.drawer-metric-val {
+  font-size: 16px;
+  font-family: monospace;
+  font-weight: bold;
+  color: var(--accent);
+  margin-top: 4px;
+}
+.drawer-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.drawer-logs-header {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--dim);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.drawer-logs-box {
+  background: #0a110d;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 11px;
+  color: #a3e635;
+  height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
