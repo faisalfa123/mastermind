@@ -1311,9 +1311,29 @@ async function renderSites() {
     }
   } catch (_) {}
 
+  // GitHub Personal Access Token Card (Menaikkan kuota dari 60 ke 5000 req/jam)
+  const tokenInput = h('input', { type: 'password', placeholder: 'ghp_xxxxxxxxxxxx atau github_pat_xxxxxxxx', style: 'flex:1;' });
+  const saveTokenBtn = h('button', { class: 'good', onclick: async () => {
+    const val = tokenInput.value.trim();
+    const ok = await sensitive(
+      val ? 'SIMPAN GITHUB TOKEN?\n(Menaikkan limit API ke 5000 req/jam)' : 'HAPUS GITHUB TOKEN?',
+      code => api('sites/token', 'POST', { token: val, totp: code })
+    );
+    if (ok) {
+      toast('Token GitHub berhasil diperbarui!');
+      tokenInput.value = '';
+    }
+  } }, 'SIMPAN TOKEN');
+
+  const tokenCard = h('div', { class: 'card', style: 'margin-bottom:16px;' },
+    h('h3', {}, '🔑 GITHUB PERSONAL ACCESS TOKEN (OPSIONAL)'),
+    h('p', { class: 'dim', style: 'font-size:11px;' }, 'Bila terkena batas GitHub (HTTP 403), masukkan token GitHub publik (read-only) untuk menaikkan kuota menjadi 5.000 req/jam. Kosongkan & simpan jika ingin menghapus.'),
+    h('div', { class: 'row', style: 'gap:8px;' }, tokenInput, saveTokenBtn)
+  );
+
   const searchCard = h('div', { class: 'card', style: 'margin-bottom:16px' });
   await renderSearch(searchCard);
-  view.replaceChildren(...[topBar, searchCard, card, customSitesBox].filter(Boolean));
+  view.replaceChildren(...[topBar, tokenCard, searchCard, card, customSitesBox].filter(Boolean));
 }
 
 /* ==========================================================================

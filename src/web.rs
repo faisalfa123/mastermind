@@ -211,6 +211,11 @@ impl App {
         let mut cfg = self.cfg.clone();
         {
             let s = self.store.lock().unwrap();
+            if let Some(tok) = &s.state.github_token {
+                if !tok.trim().is_empty() {
+                    cfg.github_token = Some(tok.trim().to_string());
+                }
+            }
             for site in &s.state.sites {
                 if !cfg.extra_repos.iter().any(|r| r.eq_ignore_ascii_case(site)) {
                     cfg.extra_repos.push(site.clone());
@@ -684,10 +689,33 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     Ok(r) => r,
                     Err(e) => return err(400, &e),
                 };
-                match discover::inspect_repo(&app.cfg, &repo) {
+                let mut cfg = app.cfg.clone();
+                if let Some(tok) = &app.store.lock().unwrap().state.github_token {
+                    if !tok.trim().is_empty() { cfg.github_token = Some(tok.trim().to_string()); }
+                }
+                match discover::inspect_repo(&cfg, &repo) {
                     Ok(e) => json_resp(200, json!({"ok": true, "entry": e})),
                     Err(e) => json_resp(200, json!({"ok": false, "repo": repo, "reason": e})),
                 }
+            }
+            (Method::Post, ["sites", "token"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
+                let tok_raw = b["token"].as_str().unwrap_or("").trim();
+                {
+                    let mut s = app.store.lock().unwrap();
+                    if tok_raw.is_empty() {
+                        s.state.github_token = None;
+                        s.log("admin", "github token removed");
+                    } else {
+                        s.state.github_token = Some(tok_raw.to_string());
+                        s.log("admin", "github token updated");
+                    }
+                    s.save().ok();
+                }
+                app.catalog(true);
+                json_resp(200, json!({"ok": true, "message": "GitHub Personal Access Token berhasil disimpan & kuota dinaikkan"}))
             }
             (Method::Post, ["sites", "add"]) => {
                 let b = read_json(&mut req);

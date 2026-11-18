@@ -91,6 +91,8 @@ pub struct State {
     pub sites: Vec<String>,
     #[serde(default)]
     pub sessions: BTreeMap<String, PersistedSession>,
+    #[serde(default)]
+    pub github_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

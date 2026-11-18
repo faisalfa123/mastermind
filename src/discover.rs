@@ -158,24 +158,73 @@ fn resolve_release_or_repo_bin(cfg: &Config, repo: &str, root_list: Option<&Vec<
             return Ok((rel, name, false));
         }
     }
+
+    // Fallback 3 (Kebal Rate-Limit 403): Coba deteksi rilis standar atau HEAD binary langsung
+    let repo_id = repo.split('/').nth(1).unwrap_or(repo).to_lowercase();
+    let candidates = [
+        format!("{repo_id}-linux-arm64"),
+        format!("{repo_id}_linux_arm64"),
+        format!("{repo_id}-arm64"),
+        repo_id.to_string(),
+    ];
+    for cand in &candidates {
+        let release_dl = format!("https://github.com/{repo}/releases/latest/download/{cand}");
+        let test_req = ureq::head(&release_dl)
+            .set("User-Agent", "mastermind")
+            .timeout(std::time::Duration::from_secs(5))
+            .call();
+        if let Ok(resp) = test_req {
+            if resp.status() == 200 || resp.status() == 302 {
+                rel["fallback_asset_url"] = Value::String(release_dl);
+                return Ok((rel, cand.clone(), false));
+            }
+        }
+        let raw_dl = format!("https://raw.githubusercontent.com/{repo}/HEAD/{cand}");
+        if let Ok(resp) = ureq::head(&raw_dl).set("User-Agent", "mastermind").timeout(std::time::Duration::from_secs(5)).call() {
+            if resp.status() == 200 {
+                rel["fallback_asset_url"] = Value::String(raw_dl);
+                return Ok((rel, cand.clone(), false));
+            }
+        }
+    }
+
     Err(format!("{repo}: tidak ditemukan binary arm64/aarch64 di GitHub Release maupun folder repo"))
 }
 
 /// Inspect a single repository for .batasan.toml (or auto-draft) and arm64 binary asset
 pub fn inspect_repo(cfg: &Config, repo: &str) -> Result<Entry, String> {
-    let list_val = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/"))?;
-    let list = list_val.as_array().ok_or("respon contents GitHub bukan array")?;
-    let (rel, bin_name, _) = resolve_release_or_repo_bin(cfg, repo, Some(list))?;
+    let list_val = get(cfg, &format!("https://api.github.com/repos/{repo}/contents/")).ok();
+    let list = list_val.as_ref().and_then(|v| v.as_array());
+    let (rel, bin_name, _) = resolve_release_or_repo_bin(cfg, repo, list)?;
 
-    if let Some(file) = list.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)) {
-        if let Some(url) = file["download_url"].as_str() {
-            if let Ok(t) = get_text(url) {
-                if let Ok(e) = build_entry(repo, &t, &rel) {
-                    return Ok(e);
+    if let Some(l) = list {
+        if let Some(file) = l.iter().find(|f| f["name"].as_str().map(|n| n.ends_with(".batasan.toml")).unwrap_or(false)) {
+            if let Some(url) = file["download_url"].as_str() {
+                if let Ok(t) = get_text(url) {
+                    if let Ok(e) = build_entry(repo, &t, &rel) {
+                        return Ok(e);
+                    }
                 }
             }
         }
     }
+
+    // Direct Raw Fallback (Strategi 1): Coba ambil langsung dari raw.githubusercontent.com (kebal 403 rate limit)
+    let repo_id = repo.split('/').nth(1).unwrap_or(repo);
+    let raw_toml_urls = [
+        format!("https://raw.githubusercontent.com/{repo}/main/{repo_id}.batasan.toml"),
+        format!("https://raw.githubusercontent.com/{repo}/master/{repo_id}.batasan.toml"),
+        format!("https://raw.githubusercontent.com/{repo}/main/{}.batasan.toml", repo_id.to_lowercase()),
+        format!("https://raw.githubusercontent.com/{repo}/main/batasan.toml"),
+    ];
+    for raw_url in &raw_toml_urls {
+        if let Ok(t) = get_text(raw_url) {
+            if let Ok(e) = build_entry(repo, &t, &rel) {
+                return Ok(e);
+            }
+        }
+    }
+
     // Auto-draft batasan.toml when repo does not have one yet
     let f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
     let toml = crate::adapt::draft(repo, &f, f.port.unwrap_or(8080), 96, &bin_name)?;
