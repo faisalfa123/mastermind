@@ -177,6 +177,12 @@ function initKodamaEyeTracking() {
       });
     });
   }, { passive: true });
+
+  const headerMascot = document.getElementById('kodama-mascot');
+  if (headerMascot) {
+    headerMascot.title = 'Shell Bumiayu (Klik untuk Info Sistem & Update Mastermind)';
+    headerMascot.onclick = openMastermindSystemModal;
+  }
 }
 
 /* ==========================================================================
@@ -341,6 +347,335 @@ async function sensitive(msg, fn, onVerified) {
   }
 }
 
+/* ==========================================================================
+   MASTERMIND SYSTEM INFO & SELF-UPDATE MODAL
+   ========================================================================== */
+function openMastermindSystemModal() {
+  document.getElementById('sys-modal')?.remove();
+
+  const close = () => modal.remove();
+  const infoStatus = h('p', { class: 'dim', style: 'font-size: 11px; margin-top: 8px;' }, 'Memeriksa rilis terbaru di GitHub...');
+  const actionRow = h('div', { class: 'row', style: 'margin-top: 14px; gap: 8px;' });
+
+  const modal = h('div', { id: 'sys-modal', class: 'wiz-modal-overlay' },
+    h('div', { class: 'wiz-dialog', style: 'max-width: 540px;' },
+      h('div', { class: 'wiz-header' },
+        h('h3', { style: 'margin: 0; font-size: 14px; display: flex; align-items: center; gap: 6px;' },
+          h('span', {}, '👑'),
+          h('span', {}, 'MASTERMIND HQ • KERNEL & SISTEM')
+        ),
+        h('button', { class: 'ghost', onclick: close, style: 'padding: 2px 8px; font-size: 12px;' }, '✕')
+      ),
+      h('div', { style: 'padding: 18px;' },
+        h('div', { class: 'drawer-metric-grid', style: 'margin-bottom: 14px;' },
+          h('div', { class: 'drawer-metric-box' },
+            h('div', { class: 'drawer-metric-label' }, 'VERSI AKTIF'),
+            h('div', { class: 'drawer-metric-val', style: 'color: var(--accent);' }, 'v' + (window.__mmVersion || '0.1.0'))
+          ),
+          h('div', { class: 'drawer-metric-box' },
+            h('div', { class: 'drawer-metric-label' }, 'TARGET ARCH'),
+            h('div', { class: 'drawer-metric-val' }, 'ARM64')
+          ),
+          h('div', { class: 'drawer-metric-box' },
+            h('div', { class: 'drawer-metric-label' }, 'MEMORI DAEMON'),
+            h('div', { class: 'drawer-metric-val', style: 'color: var(--good);' }, '< 10 MB')
+          ),
+          h('div', { class: 'drawer-metric-box' },
+            h('div', { class: 'drawer-metric-label' }, 'ISOLASI CGROUP'),
+            h('div', { class: 'drawer-metric-val' }, 'SYSTEMD')
+          )
+        ),
+        h('div', { style: 'background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px;' },
+          h('div', { style: 'font-weight: bold; font-size: 12px; margin-bottom: 4px;' }, 'Pembaruan Binary Mastermind Otomatis'),
+          h('div', { class: 'dim', style: 'font-size: 11px;' }, 'Mengunduh biner arm64 langsung dari GitHub faisalfa123/mastermind dan memperbarui daemon tanpa perlu login SSH.'),
+          infoStatus,
+          actionRow
+        )
+      ),
+      h('div', { class: 'wiz-footer' },
+        h('button', { class: 'ghost', onclick: close }, 'Tutup'),
+        h('span', { class: 'dim', style: 'font-size: 10px;' }, 'Odroid-C2 • DietPi / Ubuntu')
+      )
+    )
+  );
+
+  document.body.appendChild(modal);
+
+  api('self-update/status', 'GET').then(res => {
+    window.__mmVersion = (res.current_version || 'v0.1.0').replace(/^v/, '');
+    if (res.has_update) {
+      infoStatus.innerHTML = `<span style="color:var(--good); font-weight:bold;">🚀 Rilis baru tersedia: ${res.latest_version}</span> (Aktif: ${res.current_version})`;
+      const updateBtn = h('button', { class: 'good', onclick: async () => {
+        close();
+        const code = await ask(`UPDATE MASTERMIND KE ${res.latest_version}?\nMasukkan password / jawaban keamanan:`, true);
+        if (!code) return;
+        const term = showInstallTerminal('mastermind', `UPDATE: Mastermind ${res.latest_version}`);
+        try {
+          const r = await api('self-update/apply', 'POST', { totp: code });
+          toast(r.message || 'Pembaruan berhasil diterapkan!');
+          if (term && term.finish) term.finish();
+          levelUp('UPGRADED!');
+          setTimeout(() => window.location.reload(), 3200);
+        } catch (err) {
+          if (term && term.finish) term.finish(err.message);
+          toast('GAGAL UPDATE: ' + err.message);
+        }
+      } }, `⬆ Update ke ${res.latest_version}`);
+      actionRow.replaceChildren(updateBtn);
+    } else {
+      infoStatus.innerHTML = `<span style="color:var(--good);">✔ Mastermind versi ${res.current_version} sudah rilis paling baru.</span>`;
+      const reinstallBtn = h('button', { class: 'ghost', onclick: async () => {
+        close();
+        const code = await ask(`PASANG ULANG MASTERMIND ${res.current_version}?\nMasukkan password / jawaban keamanan:`, true);
+        if (!code) return;
+        const term = showInstallTerminal('mastermind', `RE-INSTALL: Mastermind ${res.current_version}`);
+        try {
+          const r = await api('self-update/apply', 'POST', { totp: code });
+          toast(r.message || 'Berhasil dipasang ulang!');
+          if (term && term.finish) term.finish();
+          setTimeout(() => window.location.reload(), 3200);
+        } catch (err) {
+          if (term && term.finish) term.finish(err.message);
+          toast('GAGAL: ' + err.message);
+        }
+      } }, '🔄 Pasang Ulang Biner');
+      actionRow.replaceChildren(reinstallBtn);
+    }
+  }).catch(e => {
+    infoStatus.textContent = 'Gagal memeriksa GitHub: ' + e.message;
+  });
+}
+
+/* ==========================================================================
+   INTERACTIVE INSTALL WIZARD (GHOST-WRITING & PORT CONFLICT CHECK)
+   ========================================================================== */
+function openInstallWizard(a) {
+  document.getElementById('install-wiz-modal')?.remove();
+
+  let cfg = {
+    id: a.id,
+    repo: a.repo || '',
+    bin_name: a.id,
+    description: a.description || 'Layanan mandiri Mastermind',
+    language: a.language || 'rust',
+    port: a.port || 8080,
+    priority: a.priority || 50,
+    memory_max_mb: a.memory_max_mb || 64,
+    cpu_quota_pct: a.cpu_quota_pct || 30,
+    autostart: true,
+    paths_rw: [`/var/lib/${a.id}`],
+    paths_ro: [`/etc/${a.id}`],
+    pin: ''
+  };
+
+  const tomlPreview = h('textarea', {
+    rows: 18,
+    spellcheck: 'false',
+    style: 'width: 100%; height: 350px; font-family: monospace; font-size: 11px; background: #0a110d; color: #a3e635; border: 1px solid var(--border); border-radius: 6px; padding: 10px; resize: none;'
+  });
+
+  function updateTomlPreview() {
+    tomlPreview.value = [
+      `# Mastermind Isolation Manifest (${cfg.id}.batasan.toml)`,
+      `# Native cgroups & systemd isolation (tanpa bloat container)`,
+      ``,
+      `[app]`,
+      `id = "${cfg.id}"`,
+      `repo = "${cfg.repo}"`,
+      `asset = "${cfg.bin_name}"`,
+      `language = "${cfg.language}"`,
+      `description = "${cfg.description}"`,
+      ``,
+      `[run]`,
+      `port = ${cfg.port}`,
+      `priority = ${cfg.priority}`,
+      `args = []`,
+      ``,
+      `[limits]`,
+      `memory_max_mb = ${cfg.memory_max_mb}`,
+      `cpu_quota_pct = ${cfg.cpu_quota_pct}`,
+      `tasks_max = 64`,
+      ``,
+      `[permissions]`,
+      `paths_rw = [${cfg.paths_rw.map(p => `"${p}"`).join(', ')}]`,
+      `paths_ro = [${cfg.paths_ro.map(p => `"${p}"`).join(', ')}]`,
+      ``,
+      `[auto_alive]`,
+      `restart = "${cfg.autostart ? 'always' : 'no'}"`,
+      `restart_sec = 3`,
+      `burst_limit = 5`
+    ].join('\n');
+  }
+
+  const portInput = h('input', { type: 'number', min: '80', max: '65535', value: cfg.port });
+  const portStatus = h('span', { class: 'port-status-pill port-ok' }, 'Memeriksa...');
+
+  let portOk = true;
+  let portDebounce = null;
+  const triggerPortCheck = () => {
+    clearTimeout(portDebounce);
+    portDebounce = setTimeout(async () => {
+      const p = parseInt(portInput.value, 10);
+      cfg.port = p || 8080;
+      updateTomlPreview();
+      if (!p || p < 80 || p > 65535) {
+        portStatus.textContent = 'Port tidak valid ✗';
+        portStatus.className = 'port-status-pill port-err';
+        portOk = false;
+        installBtn.disabled = true;
+        return;
+      }
+      try {
+        const res = await api('check-port', 'POST', { port: p });
+        if (res.busy) {
+          portStatus.textContent = `⚠ ${res.reason}`;
+          portStatus.className = 'port-status-pill port-err';
+          portOk = false;
+          installBtn.disabled = true;
+        } else {
+          portStatus.textContent = `✔ Port :${p} tersedia`;
+          portStatus.className = 'port-status-pill port-ok';
+          portOk = true;
+          installBtn.disabled = false;
+        }
+      } catch (_) {
+        portStatus.textContent = 'Gagal memeriksa status port';
+      }
+    }, 280);
+  };
+  portInput.oninput = triggerPortCheck;
+
+  const memLabel = h('span', { style: 'font-weight: bold; color: var(--accent);' }, `${cfg.memory_max_mb} MB`);
+  const memSlider = h('input', { type: 'range', min: '16', max: '1024', step: '16', value: cfg.memory_max_mb, oninput: e => {
+    cfg.memory_max_mb = parseInt(e.target.value, 10);
+    memLabel.textContent = `${cfg.memory_max_mb} MB`;
+    updateTomlPreview();
+  } });
+
+  const cpuLabel = h('span', { style: 'font-weight: bold; color: var(--accent);' }, `${cfg.cpu_quota_pct}%`);
+  const cpuSlider = h('input', { type: 'range', min: '5', max: '100', step: '5', value: cfg.cpu_quota_pct, oninput: e => {
+    cfg.cpu_quota_pct = parseInt(e.target.value, 10);
+    cpuLabel.textContent = `${cfg.cpu_quota_pct}%`;
+    updateTomlPreview();
+  } });
+
+  const prioLabel = h('span', { style: 'font-weight: bold; color: var(--accent);' }, cfg.priority);
+  const prioSlider = h('input', { type: 'range', min: '0', max: '100', step: '5', value: cfg.priority, oninput: e => {
+    cfg.priority = parseInt(e.target.value, 10);
+    prioLabel.textContent = cfg.priority;
+    updateTomlPreview();
+  } });
+
+  const autostartCheck = h('input', { type: 'checkbox', checked: cfg.autostart, onchange: e => {
+    cfg.autostart = e.target.checked;
+    updateTomlPreview();
+  } });
+  const autostartToggle = h('label', { class: 'switch-control' }, autostartCheck, h('span', { class: 'switch-slider' }));
+
+  const pinInput = h('input', { placeholder: 'SHA256 pin (opsional jika rilis tanpa checksums.txt)', value: cfg.pin, oninput: e => {
+    cfg.pin = e.target.value.trim();
+  } });
+
+  updateTomlPreview();
+  triggerPortCheck();
+
+  const close = () => modal.remove();
+
+  const installBtn = h('button', { class: 'good', onclick: async () => {
+    if (!portOk) {
+      toast('Perbaiki bentrok port sebelum memasang!');
+      return;
+    }
+    const finalToml = tomlPreview.value;
+    close();
+
+    const r = await sensitive(
+      `INSTALL ${cfg.id} (PORT :${cfg.port})?`,
+      code => api(`apps/${cfg.id}/install`, 'POST', { toml: finalToml, sha256: cfg.pin, totp: code }),
+      () => showInstallTerminal(cfg.id, `INSTALL: ${cfg.id}`)
+    );
+    if (r) {
+      levelUp('LEVEL UP!');
+      render();
+    }
+  } }, '✔ Lanjut Pasang (2FA)');
+
+  const formColumn = h('div', {},
+    h('div', { style: 'background: var(--panel); padding: 10px 12px; border-radius: 8px; margin-bottom: 10px;' },
+      h('div', { style: 'font-size: 11px; font-weight: bold; color: var(--accent);' }, `APLIKASI: ${cfg.id.toUpperCase()}`),
+      h('div', { class: 'dim', style: 'font-size: 10px;' }, cfg.repo || 'Katalog Resmi')
+    ),
+    h('div', { style: 'margin-bottom: 10px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Port HTTP Layanan'),
+        portStatus
+      ),
+      portInput
+    ),
+    h('div', { style: 'margin-bottom: 10px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Batas RAM (MemoryMax):'),
+        memLabel
+      ),
+      memSlider
+    ),
+    h('div', { style: 'margin-bottom: 10px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Batas CPU Quota:'),
+        cpuLabel
+      ),
+      cpuSlider
+    ),
+    h('div', { style: 'margin-bottom: 10px;' },
+      h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
+        h('span', {}, 'Prioritas OOM (Nice):'),
+        prioLabel
+      ),
+      prioSlider
+    ),
+    h('div', { style: 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;' },
+      h('span', { style: 'font-size: 11px;' }, 'Jalankan Otomatis saat Boot:'),
+      autostartToggle
+    ),
+    (a.verified === false ? h('div', { style: 'margin-bottom: 8px;' },
+      h('label', { style: 'font-size: 10px; color: var(--warn); display: block; margin-bottom: 4px;' }, 'Pin SHA256 (Opsional):'),
+      pinInput
+    ) : null)
+  );
+
+  const previewColumn = h('div', {},
+    h('div', { style: 'font-size: 11px; font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between;' },
+      h('span', {}, 'PRATINJAU .BATASAN.TOML (GHOST-WRITING)'),
+      h('span', { class: 'dim', style: 'font-size: 10px;' }, 'Tersinkron Live')
+    ),
+    tomlPreview
+  );
+
+  const modal = h('div', { id: 'install-wiz-modal', class: 'wiz-modal-overlay' },
+    h('div', { class: 'wiz-dialog' },
+      h('div', { class: 'wiz-header' },
+        h('h3', { style: 'margin: 0; font-size: 14px;' }, `⚙ RACIK BATASAN SEBELUM PASANG: ${cfg.id}`),
+        h('button', { class: 'ghost', onclick: close, style: 'padding: 2px 8px; font-size: 12px;' }, '✕')
+      ),
+      h('div', { class: 'wiz-body' }, formColumn, previewColumn),
+      h('div', { class: 'wiz-footer' },
+        h('button', { class: 'ghost', onclick: close }, 'Batal'),
+        installBtn
+      )
+    )
+  );
+
+  document.body.appendChild(modal);
+
+  if (cfg.repo) {
+    api('sites/wizard', 'POST', { repo: cfg.repo }).then(res => {
+      if (res && res.ok && res.draft && res.draft.toml) {
+        tomlPreview.value = res.draft.toml;
+      }
+    }).catch(() => {});
+  }
+}
+
 function appCard(a) {
   const inst = a.installed;
   const act = (name, label, cls) => h('button', { class: cls || '', onclick: async () => {
@@ -362,7 +697,7 @@ function appCard(a) {
     : h('span', { class: 'tag ok-badge', title: 'Terverifikasi SHA256 Checksum' }, '✔ SHA256 VERIFIED');
 
   if (!inst) {
-    // Uninstalled app card
+    // Uninstalled app card: Buka Interactive Wizard sebelum Install
     return h('div', { class: 'card' },
       h('h3', {}, a.id),
       h('p', {}, a.description || a.repo),
@@ -373,7 +708,7 @@ function appCard(a) {
         h('span', { class: 'tag' }, a.language.toUpperCase()),
         h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`)),
       h('p', {}, 'Rilis terbaru: ' + a.version),
-      h('div', { class: 'row' }, act('install', 'Install', 'good'))
+      h('div', { class: 'row' }, h('button', { class: 'good', onclick: () => openInstallWizard(a) }, '⚙ Pasang & Atur Batasan'))
     );
   }
 
@@ -1127,9 +1462,11 @@ async function renderCity() {
   const scene = new THREE.Scene();
   scene.background = null;
 
-  // 3. Dekatkan Kamera Isometrik & Perbesar Proporsi Ruangan
-  const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000);
-  camera.position.set(0, 15.5, 16.5);
+  // 3. Dekatkan Kamera Isometrik & Perbesar Proporsi Ruangan (Responsif Portrait Mobile)
+  const aspect = width / height;
+  const camera = new THREE.PerspectiveCamera(38, aspect, 0.1, 1000);
+  const zoomFactor = aspect < 1.0 ? Math.max(1.0, 1.15 / aspect) : 1.0;
+  camera.position.set(0, 15.5 * zoomFactor, 16.5 * zoomFactor);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setClearColor(0x000000, 0);
@@ -1140,12 +1477,15 @@ async function renderCity() {
   container3D.appendChild(renderer.domElement);
   threeRenderer = renderer;
 
-  // Handle responsive resize
+  // Handle responsive resize (Auto adjust zoom on mobile orientation change)
   const onResize = () => {
     if (!container3D || !renderer) return;
     const w = container3D.clientWidth || 960;
     const hVal = container3D.clientHeight || 560;
-    camera.aspect = w / hVal;
+    const asp = w / hVal;
+    camera.aspect = asp;
+    const zf = asp < 1.0 ? Math.max(1.0, 1.15 / asp) : 1.0;
+    camera.position.set(0, 15.5 * zf, 16.5 * zf);
     camera.updateProjectionMatrix();
     renderer.setSize(w, hVal);
   };

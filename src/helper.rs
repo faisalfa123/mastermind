@@ -63,6 +63,7 @@ pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
         Command::Quarantine(id) => quarantine(cfg, &id),
         Command::Logs(id) => logs(cfg, &id),
         Command::Reconfigure(id) => reconfigure(cfg, &id),
+        Command::SelfUpdate => self_update(cfg),
     }
 }
 
@@ -121,6 +122,41 @@ fn reconfigure(cfg: &Config, id: &str) -> Result<String, String> {
     let _ = fs::remove_file(&backup_path);
     let _ = fs::remove_dir_all(&st);
     Ok("reconfigured".into())
+}
+
+fn self_update(cfg: &Config) -> Result<String, String> {
+    let st = staging(cfg, "self-update");
+    let bin_file = st.join("mastermind");
+    if !bin_file.exists() && !cfg.dry_run {
+        return Err("staged binary not found".into());
+    }
+    let bin = read_nofollow(&bin_file, 96 << 20)?;
+    let v = scanner::scan(&bin);
+    if v.blocked {
+        return Err(format!("scanner blocked: {}", v.reasons.join("; ")));
+    }
+    let mut target = PathBuf::from("/usr/local/bin/mastermind");
+    if !target.exists() {
+        if let Ok(cur) = std::env::current_exe() {
+            target = cur;
+        }
+    }
+    let backup = Path::new(&cfg.data_dir).join("mastermind.bak");
+    if target.exists() {
+        let _ = fs::copy(&target, &backup);
+    }
+    store::write_atomic(&target, &bin, 0o755).map_err(|e| format!("failed to write binary: {e}"))?;
+    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o755));
+    let _ = fs::remove_dir_all(&st);
+    if !cfg.dry_run {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            let _ = std::process::Command::new("systemctl")
+                .args(["restart", "mastermind-web"])
+                .output();
+        });
+    }
+    Ok("updated".into())
 }
 
 fn install(cfg: &Config, id: &str) -> Result<String, String> {

@@ -8,6 +8,7 @@ use crate::store::{self, Store};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -410,6 +411,98 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 }
                 json_resp(200, json!({"hits": hits}))
             }
+            (Method::Post, ["check-port"]) => {
+                let b = read_json(&mut req);
+                let port = b["port"].as_u64().unwrap_or(0) as u16;
+                if port == 8443 {
+                    return json_resp(200, json!({"port": port, "busy": true, "reason": "Port 8443 digunakan oleh Mastermind Web Engine"}));
+                }
+                if port < 80 {
+                    return json_resp(200, json!({"port": port, "busy": true, "reason": "Port di bawah 80 tidak diizinkan"}));
+                }
+                let st = app.store.lock().unwrap().state.clone();
+                for (id, a) in &st.apps {
+                    if a.port == port {
+                        return json_resp(200, json!({"port": port, "busy": true, "reason": format!("Port :{port} sudah terdaftar pada aplikasi '{id}'")}));
+                    }
+                }
+                let busy = port_in_use(port);
+                json_resp(200, json!({
+                    "port": port,
+                    "busy": busy,
+                    "reason": if busy { format!("Port :{port} sedang digunakan oleh service lain di server ini") } else { "Port tersedia ✓".into() }
+                }))
+            }
+            (Method::Get, ["self-update", "status"]) => {
+                let cur_ver = format!("v{}", env!("CARGO_PKG_VERSION"));
+                let mut latest_ver = cur_ver.clone();
+                let mut has_update = false;
+                let mut notes = String::new();
+                let mut published_at = String::new();
+
+                let release_val = ureq::get("https://api.github.com/repos/faisalfa123/mastermind/releases/latest")
+                    .set("User-Agent", "mastermind")
+                    .set("Accept", "application/vnd.github+json")
+                    .timeout(std::time::Duration::from_secs(10))
+                    .call()
+                    .ok()
+                    .and_then(|r| r.into_json::<Value>().ok());
+
+                if let Some(rel) = release_val {
+                    if let Some(tag) = rel["tag_name"].as_str() {
+                        latest_ver = tag.to_string();
+                        let clean_latest = latest_ver.trim_start_matches('v');
+                        let clean_cur = cur_ver.trim_start_matches('v');
+                        has_update = clean_latest != clean_cur;
+                    }
+                    notes = rel["body"].as_str().unwrap_or("").to_string();
+                    published_at = rel["published_at"].as_str().unwrap_or("").to_string();
+                }
+
+                json_resp(200, json!({
+                    "current_version": cur_ver,
+                    "latest_version": latest_ver,
+                    "has_update": has_update,
+                    "notes": notes,
+                    "published_at": published_at,
+                    "arch": "aarch64 / arm64",
+                    "target": "Odroid-C2 DietPi/Ubuntu"
+                }))
+            }
+            (Method::Post, ["self-update", "apply"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
+                if app.store.lock().unwrap().state.lockdown { return err(423, "Lockdown aktif"); }
+
+                let download_url = "https://github.com/faisalfa123/mastermind/releases/latest/download/mastermind-linux-arm64";
+                let st = Path::new(&app.cfg.data_dir).join("staging").join("self-update");
+                let _ = std::fs::remove_dir_all(&st);
+                if let Err(e) = std::fs::create_dir_all(&st) {
+                    return err(500, &format!("Gagal membuat folder staging: {e}"));
+                }
+
+                let bin = match installer::download(download_url, 96 << 20) {
+                    Ok(b) => b,
+                    Err(e) => return err(502, &format!("Gagal mengunduh rilis terbaru: {e}")),
+                };
+
+                let bin_path = st.join("mastermind");
+                if let Err(e) = store::write_atomic(&bin_path, &bin, 0o755) {
+                    return err(500, &format!("Gagal menyimpan biner staging: {e}"));
+                }
+
+                match ipc::call(&app.cfg.helper_socket, "self-update mastermind") {
+                    Ok(_) => {
+                        app.store.lock().unwrap().log("admin", "self-update mastermind applied");
+                        json_resp(200, json!({
+                            "ok": true,
+                            "message": "Mastermind berhasil diperbarui! Service sedang me-restart, halaman akan dimuat ulang."
+                        }))
+                    }
+                    Err(e) => err(500, &format!("Helper self-update gagal: {e}")),
+                }
+            }
             (Method::Post, ["sites", "wizard"]) => {
                 let b = read_json(&mut req);
                 let repo = match discover::parse_repo(b["repo"].as_str().unwrap_or("")) { Ok(r) => r, Err(e) => return err(400, &e) };
@@ -624,6 +717,25 @@ tasks_max = 64
                             entries = fresh;
                         }
                         let Some(e) = entries.iter().find(|e| e.id == *id) else { return err(404, "not in catalog") };
+                        let mut entry = e.clone();
+                        if let Some(custom_toml) = b["toml"].as_str() {
+                            if !custom_toml.trim().is_empty() {
+                                match crate::batasan::Batasan::parse(custom_toml) {
+                                    Ok(b_parsed) => {
+                                        entry.port = b_parsed.run.port;
+                                        entry.memory_max_mb = b_parsed.limits.memory_max_mb;
+                                        entry.cpu_quota_pct = b_parsed.limits.cpu_quota_pct;
+                                        entry.priority = b_parsed.run.priority;
+                                        if let Some(desc) = b_parsed.app.description.clone() {
+                                            entry.description = desc;
+                                        }
+                                        entry.batasan_toml = custom_toml.to_string();
+                                        entry.batasan = Some(b_parsed);
+                                    }
+                                    Err(err_msg) => return err(422, &format!("Format batasan.toml tidak valid: {err_msg}")),
+                                }
+                            }
+                        }
                         let app_id = id.to_string();
                         {
                             let mut logs = app.install_logs.lock().unwrap();
@@ -638,7 +750,7 @@ tasks_max = 64
                                 list.push(msg.to_string());
                             }
                         };
-                        match installer::install_with_logger(&app.cfg, &app.store, e, &logger) {
+                        match installer::install_with_logger(&app.cfg, &app.store, &entry, &logger) {
                             Ok(m) => {
                                 logger(&format!("[SUCCESS] {}", m));
                                 json_resp(200, json!({"message": m}))

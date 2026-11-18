@@ -11,6 +11,7 @@ pub enum Command {
     Quarantine(String),
     Logs(String),
     Reconfigure(String),
+    SelfUpdate,
 }
 
 use std::io::Read;
@@ -37,6 +38,7 @@ impl Command {
             "quarantine" => Ok(Command::Quarantine(id)),
             "logs" => Ok(Command::Logs(id)),
             "reconfigure" => Ok(Command::Reconfigure(id)),
+            "self-update" => Ok(Command::SelfUpdate),
             _ => Err("unknown verb"),
         }
     }
@@ -63,6 +65,7 @@ mod tests {
     fn ok() {
         assert_eq!(Command::parse("start senandung"), Ok(Command::Start("senandung".into())));
         assert_eq!(Command::parse("reconfigure senandung"), Ok(Command::Reconfigure("senandung".into())));
+        assert_eq!(Command::parse("self-update mastermind"), Ok(Command::SelfUpdate));
     }
     #[test]
     fn rejects_injection() {
