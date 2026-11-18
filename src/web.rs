@@ -99,12 +99,68 @@ fn cookie_token(req: &Request) -> Option<String> {
 impl App {
     fn session(&self, req: &Request) -> Option<(String, String)> {
         let tok = cookie_token(req)?;
-        let mut m = self.sessions.lock().unwrap();
-        let now = Instant::now();
-        m.retain(|_, s| now.duration_since(s.last) < IDLE && now.duration_since(s.created) < ABS);
-        let s = m.get_mut(&tok)?;
-        s.last = now;
-        Some((tok, s.csrf.clone()))
+        let now_epoch = store::now();
+        let idle_secs = 15 * 60;
+        let abs_secs = 8 * 3600;
+
+        // Cek dan bersihkan sesi di in-memory cache
+        {
+            let mut m = self.sessions.lock().unwrap();
+            let now = Instant::now();
+            m.retain(|_, s| now.duration_since(s.last) < IDLE && now.duration_since(s.created) < ABS);
+            if let Some(s) = m.get_mut(&tok) {
+                s.last = now;
+                return Some((tok.clone(), s.csrf.clone()));
+            }
+        }
+
+        // Jika tidak ada di in-memory (misal service baru saja direstart), periksa state.json
+        let mut st = self.store.lock().unwrap();
+        // Bersihkan session expired di store
+        st.state.sessions.retain(|_, s| {
+            now_epoch.saturating_sub(s.last_seen) < idle_secs && now_epoch.saturating_sub(s.created_at) < abs_secs
+        });
+        if let Some(ps) = st.state.sessions.get_mut(&tok) {
+            ps.last_seen = now_epoch;
+            let csrf = ps.csrf.clone();
+            st.save().ok();
+            drop(st);
+
+            // Masukkan kembali ke in-memory cache
+            let now = Instant::now();
+            self.sessions.lock().unwrap().insert(tok.clone(), Session {
+                csrf: csrf.clone(),
+                created: now,
+                last: now,
+            });
+            return Some((tok, csrf));
+        }
+
+        None
+    }
+
+    /// Memeriksa autentikasi untuk aksi sensitif:
+    /// Menerima Password Admin ATAU Jawaban Keamanan ATAU Kode TOTP yang valid.
+    fn admin_auth_ok(&self, resp: &str) -> bool {
+        let trimmed = resp.trim();
+        if trimmed.is_empty() { return false; }
+
+        let st = self.store.lock().unwrap();
+        let admin = match &st.state.admin {
+            Some(a) => a.clone(),
+            None => return false,
+        };
+        drop(st);
+
+        // 1. Cek apakah cocok dengan Password Akun Admin
+        if auth::verify_password(trimmed, &admin.pw_hash) {
+            return true;
+        }
+
+        // 2. Cek apakah cocok dengan Two-Factor (Jawaban Keamanan atau TOTP)
+        let is_totp = matches!(admin.get_two_factor(), store::TwoFactor::Totp { .. });
+        let step = self.two_factor_peek(trimmed);
+        self.two_factor_consume(is_totp, step)
     }
 
     /// Verifies the second factor response (either TOTP or Security Question).
@@ -144,11 +200,7 @@ impl App {
     }
 
     fn two_factor_ok(&self, resp: &str) -> bool {
-        let st = self.store.lock().unwrap();
-        let is_totp = matches!(st.state.admin.as_ref().map(|a| a.get_two_factor()), Some(store::TwoFactor::Totp { .. }));
-        drop(st);
-        let step = self.two_factor_peek(resp);
-        self.two_factor_consume(is_totp, step)
+        self.admin_auth_ok(resp)
     }
 
     fn catalog(&self, force: bool) -> (Vec<Entry>, Vec<Unconfigured>) {
@@ -357,8 +409,18 @@ fn handle(app: &Arc<App>, mut req: Request) {
             { let mut l = app.lockout.lock().unwrap(); l.success(&ipk); l.success(&ak); }
             let (tok, csrf) = (auth::random_token(), auth::random_token());
             let now = Instant::now();
+            let now_epoch = store::now();
             app.sessions.lock().unwrap().insert(tok.clone(), Session { csrf: csrf.clone(), created: now, last: now });
-            app.store.lock().unwrap().log("admin", &format!("login from {ip}"));
+            {
+                let mut s = app.store.lock().unwrap();
+                s.state.sessions.insert(tok.clone(), store::PersistedSession {
+                    csrf: csrf.clone(),
+                    created_at: now_epoch,
+                    last_seen: now_epoch,
+                });
+                s.log("admin", &format!("login from {ip}"));
+                s.save().ok();
+            }
             crate::notify::send(&app.cfg, "Login", &format!("Login Mastermind dari {ip}"));
             let sec = if app.cfg.cert.is_some() { "; Secure" } else { "" };
             return json_resp(200, json!({"csrf": csrf})).with_header(hdr("Set-Cookie", &format!("mm_session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{sec}")));
@@ -371,7 +433,12 @@ fn handle(app: &Arc<App>, mut req: Request) {
         match (&method, seg.as_slice()) {
             (Method::Post, ["logout"]) => {
                 app.sessions.lock().unwrap().remove(&tok);
-                app.store.lock().unwrap().log("admin", "logout");
+                {
+                    let mut s = app.store.lock().unwrap();
+                    s.state.sessions.remove(&tok);
+                    s.log("admin", "logout");
+                    s.save().ok();
+                }
                 json_resp(200, json!({})).with_header(hdr("Set-Cookie", "mm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"))
             }
             (Method::Get, ["apps"]) => json_resp(200, apps_json(app, false)),
@@ -381,10 +448,10 @@ fn handle(app: &Arc<App>, mut req: Request) {
             (Method::Post, ["verify-2fa"]) => {
                 let b = read_json(&mut req);
                 let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
-                if app.two_factor_peek(tf_code).is_some() {
+                if app.admin_auth_ok(tf_code) {
                     json_resp(200, json!({"ok": true}))
                 } else {
-                    err(403, "kode / jawaban 2FA salah")
+                    err(403, "Password atau kode 2FA salah")
                 }
             }
             (Method::Get, ["sites"]) => {
@@ -503,38 +570,76 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
                 if app.store.lock().unwrap().state.lockdown { return err(423, "Lockdown aktif"); }
 
+                let id_for_log = "mastermind".to_string();
+                {
+                    let mut logs = app.install_logs.lock().unwrap();
+                    logs.insert(id_for_log.clone(), vec![
+                        "[*] Memulai instalasi mastermind...".to_string(),
+                        "[-] Menyiapkan folder staging self-update...".to_string()
+                    ]);
+                }
+                let app_ref = app.clone();
+                let log_step = move |msg: &str| {
+                    let mut logs = app_ref.install_logs.lock().unwrap();
+                    if let Some(list) = logs.get_mut("mastermind") {
+                        if list.len() > 500 { list.remove(0); }
+                        list.push(msg.to_string());
+                    }
+                };
+
                 let download_url = "https://github.com/faisalfa123/mastermind/releases/latest/download/mastermind-linux-arm64";
                 let checksum_url = "https://github.com/faisalfa123/mastermind/releases/latest/download/checksums.txt";
                 let st = Path::new(&app.cfg.data_dir).join("staging").join("self-update");
                 let _ = std::fs::remove_dir_all(&st);
                 if let Err(e) = std::fs::create_dir_all(&st) {
+                    log_step(&format!("[ERROR] Gagal membuat staging: {e}"));
                     return err(500, &format!("Gagal membuat folder staging: {e}"));
                 }
 
+                log_step("[-] Mengunduh biner arm64 terbaru dari GitHub releases...");
                 let bin = match installer::download(download_url, 96 << 20) {
-                    Ok(b) => b,
-                    Err(e) => return err(502, &format!("Gagal mengunduh rilis terbaru: {e}")),
+                    Ok(b) => {
+                        log_step(&format!("[+] Unduhan selesai (ukuran: {:.2} MB)", (b.len() as f64) / (1024.0 * 1024.0)));
+                        b
+                    }
+                    Err(e) => {
+                        log_step(&format!("[ERROR] Gagal unduh biner: {e}"));
+                        return err(502, &format!("Gagal mengunduh rilis terbaru: {e}"));
+                    }
                 };
 
                 // Unduh file checksums.txt jika tersedia di rilis resmi GitHub
+                log_step("[-] Mengambil file checksums.txt...");
                 if let Ok(cbytes) = installer::download(checksum_url, 64 << 10) {
                     let _ = std::fs::write(st.join("checksums.txt"), &cbytes);
+                    log_step("[+] File checksums.txt berhasil diambil");
+                } else {
+                    log_step("[!] File checksums.txt tidak ditemukan pada rilis ini, melanjutkan verifikasi internal");
                 }
 
+                log_step("[-] Menyimpan biner ke staging dan mengatur hak akses eksekusi...");
                 let bin_path = st.join("mastermind");
                 if let Err(e) = store::write_atomic(&bin_path, &bin, 0o755) {
+                    log_step(&format!("[ERROR] Gagal menyimpan biner staging: {e}"));
                     return err(500, &format!("Gagal menyimpan biner staging: {e}"));
                 }
 
+                log_step("[-] Mengirim instruksi self-update ke helper privileged daemon...");
                 match ipc::call(&app.cfg.helper_socket, "self-update mastermind") {
                     Ok(_) => {
+                        log_step("[+] Helper berhasil memvalidasi & mengganti /usr/local/bin/mastermind");
+                        log_step("[+] Memulai restart service mastermind-web dalam 2 detik...");
+                        log_step("[SUCCESS] Mastermind berhasil diperbarui ke versi terbaru!");
                         app.store.lock().unwrap().log("admin", "self-update mastermind applied");
                         json_resp(200, json!({
                             "ok": true,
                             "message": "Mastermind berhasil diperbarui! Service sedang me-restart, halaman akan dimuat ulang."
                         }))
                     }
-                    Err(e) => err(500, &format!("Helper self-update gagal: {e}")),
+                    Err(e) => {
+                        log_step(&format!("[ERROR] Helper self-update gagal: {e}"));
+                        err(500, &format!("Helper self-update gagal: {e}"))
+                    }
                 }
             }
             (Method::Post, ["sites", "wizard"]) => {
@@ -768,6 +873,12 @@ tasks_max = 64
                                     }
                                     Err(err_msg) => return err(422, &format!("Format batasan.toml tidak valid: {err_msg}")),
                                 }
+                            }
+                        }
+                        if let Some(pin) = b["sha256"].as_str() {
+                            let p_trim = pin.trim();
+                            if !p_trim.is_empty() {
+                                entry.pin = Some(p_trim.to_string());
                             }
                         }
                         let app_id = id.to_string();

@@ -187,7 +187,8 @@ fn self_update(cfg: &Config) -> Result<String, String> {
     let _ = fs::remove_dir_all(&st);
     if !cfg.dry_run {
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(600));
+            // Berikan jeda 2 detik agar response HTTP sukses sempat terkirim utuh ke browser client
+            std::thread::sleep(std::time::Duration::from_millis(2000));
             let _ = std::process::Command::new("systemctl")
                 .args(["restart", "mastermind-web"])
                 .output();
@@ -219,6 +220,16 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
     fs::create_dir_all(&jail_dir).map_err(|e| e.to_string())?;
     let _ = fs::set_permissions(&cfg.data_dir, fs::Permissions::from_mode(0o755));
     let _ = fs::set_permissions(&jail_dir, fs::Permissions::from_mode(0o755));
+
+    // Pastikan seluruh direktori paths_rw yang dideklarasikan aplikasi sudah ada di filesystem
+    for p in &b.permissions.paths_rw {
+        let p_buf = Path::new(p);
+        if !p_buf.exists() {
+            if let Err(e) = fs::create_dir_all(p_buf) {
+                eprintln!("[warn] gagal membuat paths_rw {p}: {e}");
+            }
+        }
+    }
 
     let target = bin_path(cfg, id);
     let prev = dir.join("bin.prev");

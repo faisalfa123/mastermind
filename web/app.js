@@ -33,6 +33,8 @@ async function showAppLogs(appId) {
 }
 
 
+let isUpdatingMastermind = false;
+
 function showInstallTerminal(appId, title) {
   let modal = document.getElementById('term-modal');
   if (modal) modal.remove();
@@ -83,7 +85,9 @@ function showInstallTerminal(appId, title) {
           clearInterval(timer);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Selama self-update berlangsung, abaikan disconnect sementara saat daemon restart
+    }
   }, 600);
 
   return {
@@ -227,7 +231,12 @@ async function api(path, method = 'GET', body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401 && path !== 'login') { showLogin(); throw new Error('sesi berakhir'); }
+  if (r.status === 401 && path !== 'login') {
+    if (!isUpdatingMastermind) {
+      showLogin();
+    }
+    throw new Error('sesi berakhir');
+  }
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
@@ -249,11 +258,13 @@ function ask(msg, needTotp) {
       promptText += `\n[Pertanyaan: ${authInfo.question}]`;
       t.removeAttribute('inputmode');
       t.removeAttribute('maxlength');
-      t.placeholder = 'JAWABAN RAHASIA';
+      t.type = 'password';
+      t.placeholder = 'PASSWORD ADMIN / JAWABAN';
     } else if (needTotp) {
-      t.setAttribute('inputmode', 'numeric');
-      t.setAttribute('maxlength', '6');
-      t.placeholder = 'KODE 2FA (6-DIGIT)';
+      t.removeAttribute('inputmode');
+      t.removeAttribute('maxlength');
+      t.type = 'password';
+      t.placeholder = 'PASSWORD ADMIN / KODE 2FA';
     }
     $('#dlgmsg').textContent = promptText;
     t.hidden = !needTotp;
@@ -409,14 +420,34 @@ function openMastermindSystemModal() {
         close();
         const code = await ask(`UPDATE MASTERMIND KE ${res.latest_version}?\nMasukkan password / jawaban keamanan:`, true);
         if (!code) return;
+        isUpdatingMastermind = true;
         const term = showInstallTerminal('mastermind', `UPDATE: Mastermind ${res.latest_version}`);
         try {
           const r = await api('self-update/apply', 'POST', { totp: code });
           toast(r.message || 'Pembaruan berhasil diterapkan!');
           if (term && term.finish) term.finish();
           levelUp('UPGRADED!');
-          setTimeout(() => window.location.reload(), 3200);
+          // Tunggu service hidup kembali lalu muat ulang halaman dengan sesi utuh
+          setTimeout(async () => {
+            let attempts = 0;
+            const checkAlive = setInterval(async () => {
+              attempts++;
+              try {
+                const me = await fetch('/api/me');
+                if (me.ok || attempts >= 10) {
+                  clearInterval(checkAlive);
+                  window.location.reload();
+                }
+              } catch (_) {
+                if (attempts >= 10) {
+                  clearInterval(checkAlive);
+                  window.location.reload();
+                }
+              }
+            }, 1000);
+          }, 2500);
         } catch (err) {
+          isUpdatingMastermind = false;
           if (term && term.finish) term.finish(err.message);
           toast('GAGAL UPDATE: ' + err.message);
         }
@@ -428,13 +459,32 @@ function openMastermindSystemModal() {
         close();
         const code = await ask(`PASANG ULANG MASTERMIND ${res.current_version}?\nMasukkan password / jawaban keamanan:`, true);
         if (!code) return;
+        isUpdatingMastermind = true;
         const term = showInstallTerminal('mastermind', `RE-INSTALL: Mastermind ${res.current_version}`);
         try {
           const r = await api('self-update/apply', 'POST', { totp: code });
           toast(r.message || 'Berhasil dipasang ulang!');
           if (term && term.finish) term.finish();
-          setTimeout(() => window.location.reload(), 3200);
+          setTimeout(async () => {
+            let attempts = 0;
+            const checkAlive = setInterval(async () => {
+              attempts++;
+              try {
+                const me = await fetch('/api/me');
+                if (me.ok || attempts >= 10) {
+                  clearInterval(checkAlive);
+                  window.location.reload();
+                }
+              } catch (_) {
+                if (attempts >= 10) {
+                  clearInterval(checkAlive);
+                  window.location.reload();
+                }
+              }
+            }, 1000);
+          }, 2500);
         } catch (err) {
+          isUpdatingMastermind = false;
           if (term && term.finish) term.finish(err.message);
           toast('GAGAL: ' + err.message);
         }

@@ -73,6 +73,13 @@ fn d_true() -> bool { true }
 fn d_mem() -> u32 { 128 }
 fn d_cpu() -> u8 { 50 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PersistedSession {
+    pub csrf: String,
+    pub created_at: u64,
+    pub last_seen: u64,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct State {
     pub admin: Option<Admin>,
@@ -82,6 +89,8 @@ pub struct State {
     pub lockdown: bool,
     #[serde(default)]
     pub sites: Vec<String>,
+    #[serde(default)]
+    pub sessions: BTreeMap<String, PersistedSession>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
