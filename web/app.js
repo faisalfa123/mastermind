@@ -1009,7 +1009,7 @@ function openSlideDrawer(emp, onActionTriggered) {
       h('div', { class: 'drawer-metric-grid' },
         h('div', { class: 'drawer-metric-box' },
           h('div', { class: 'drawer-metric-label' }, 'STATUS OPERASI'),
-          h('div', { class: 'drawer-metric-val', style: `color: ${emp.status === 'active' ? 'var(--good)' : 'var(--danger)}'` }, emp.status.toUpperCase())
+          h('div', { class: 'drawer-metric-val', style: `color: ${emp.status === 'active' ? 'var(--good)' : 'var(--danger)'}` }, emp.status.toUpperCase())
         ),
         h('div', { class: 'drawer-metric-box' },
           h('div', { class: 'drawer-metric-label' }, 'PORT NETWORK'),
