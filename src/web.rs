@@ -58,6 +58,36 @@ fn json_resp(code: u16, v: Value) -> Resp {
 fn err(code: u16, m: &str) -> Resp { json_resp(code, json!({"error": m})) }
 fn asset(data: &[u8], ct: &str) -> Resp { secure(Response::from_data(data.to_vec()).with_header(hdr("Content-Type", ct)), "no-cache") }
 
+fn format_display_version(ver: &str) -> String {
+    let (core, suffix) = match ver.find('-') {
+        Some(idx) => (&ver[..idx], &ver[idx..]),
+        None => (ver, ""),
+    };
+    let parts: Vec<&str> = core.split('.').collect();
+    if parts.len() == 3 {
+        if let Ok(patch_num) = parts[2].parse::<u32>() {
+            return format!("v{}.{}.{:02}{suffix}", parts[0], parts[1], patch_num);
+        }
+    }
+    format!("v{ver}")
+}
+
+fn normalize_version_tag(ver: &str) -> String {
+    let clean = ver.trim_start_matches('v');
+    let (core, suffix) = match clean.find('-') {
+        Some(idx) => (&clean[..idx], &clean[idx..]),
+        None => (clean, ""),
+    };
+    let parts: Vec<&str> = core.split('.').collect();
+    if parts.len() == 3 {
+        if let (Ok(maj), Ok(min), Ok(patch)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>(), parts[2].parse::<u32>()) {
+            return format!("{maj}.{min}.{patch}{suffix}");
+        }
+    }
+    clean.to_string()
+}
+
+
 fn header_of(req: &Request, name: &str) -> Option<String> {
     req.headers().iter().find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name)).map(|h| h.value.as_str().to_string())
 }
@@ -434,7 +464,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 }))
             }
             (Method::Get, ["self-update", "status"]) => {
-                let cur_ver = format!("v{}", env!("CARGO_PKG_VERSION"));
+                let cur_ver = format_display_version(env!("CARGO_PKG_VERSION"));
                 let mut latest_ver = cur_ver.clone();
                 let mut has_update = false;
                 let mut notes = String::new();
@@ -451,9 +481,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 if let Some(rel) = release_val {
                     if let Some(tag) = rel["tag_name"].as_str() {
                         latest_ver = tag.to_string();
-                        let clean_latest = latest_ver.trim_start_matches('v');
-                        let clean_cur = cur_ver.trim_start_matches('v');
-                        has_update = clean_latest != clean_cur;
+                        has_update = normalize_version_tag(&latest_ver) != normalize_version_tag(&cur_ver);
                     }
                     notes = rel["body"].as_str().unwrap_or("").to_string();
                     published_at = rel["published_at"].as_str().unwrap_or("").to_string();
@@ -476,6 +504,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 if app.store.lock().unwrap().state.lockdown { return err(423, "Lockdown aktif"); }
 
                 let download_url = "https://github.com/faisalfa123/mastermind/releases/latest/download/mastermind-linux-arm64";
+                let checksum_url = "https://github.com/faisalfa123/mastermind/releases/latest/download/checksums.txt";
                 let st = Path::new(&app.cfg.data_dir).join("staging").join("self-update");
                 let _ = std::fs::remove_dir_all(&st);
                 if let Err(e) = std::fs::create_dir_all(&st) {
@@ -486,6 +515,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     Ok(b) => b,
                     Err(e) => return err(502, &format!("Gagal mengunduh rilis terbaru: {e}")),
                 };
+
+                // Unduh file checksums.txt jika tersedia di rilis resmi GitHub
+                if let Ok(cbytes) = installer::download(checksum_url, 64 << 10) {
+                    let _ = std::fs::write(st.join("checksums.txt"), &cbytes);
+                }
 
                 let bin_path = st.join("mastermind");
                 if let Err(e) = store::write_atomic(&bin_path, &bin, 0o755) {
@@ -827,3 +861,24 @@ pub fn serve(cfg: Config) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_display_version() {
+        assert_eq!(format_display_version("0.1.2-beta"), "v0.1.02-beta");
+        assert_eq!(format_display_version("0.1.10-beta"), "v0.1.10-beta");
+        assert_eq!(format_display_version("0.1.2"), "v0.1.02");
+    }
+
+    #[test]
+    fn test_normalize_version_tag() {
+        assert_eq!(normalize_version_tag("v0.1.02-beta"), "0.1.2-beta");
+        assert_eq!(normalize_version_tag("0.1.2-beta"), "0.1.2-beta");
+        assert_eq!(normalize_version_tag("v0.1.02"), "0.1.2");
+        assert_eq!(normalize_version_tag("v0.1.01-beta"), normalize_version_tag("0.1.1-beta"));
+    }
+}
+

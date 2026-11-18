@@ -131,6 +131,43 @@ fn self_update(cfg: &Config) -> Result<String, String> {
         return Err("staged binary not found".into());
     }
     let bin = read_nofollow(&bin_file, 96 << 20)?;
+
+    // 1. Validasi format biner ELF ARM64
+    if bin.len() < 64 || &bin[..4] != b"\x7fELF" {
+        return Err("not an ELF executable".into());
+    }
+    if bin[4] != 2 || bin[5] != 1 {
+        return Err("not 64-bit little-endian ELF".into());
+    }
+    let machine = u16::from_le_bytes([bin[18], bin[19]]);
+    if machine != 183 {
+        return Err(format!("wrong architecture (e_machine={machine}), expected aarch64 (183)"));
+    }
+
+    // 2. Verifikasi Checksums jika checksums.txt disediakan di staging
+    let cs_file = st.join("checksums.txt");
+    if cs_file.exists() {
+        if let Ok(content) = fs::read_to_string(&cs_file) {
+            let actual_sha = sha(&bin);
+            let mut matched = false;
+            for line in content.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let hash = parts[0];
+                    let fname = parts[1].trim_start_matches('*');
+                    if (fname == "mastermind-linux-arm64" || fname == "mastermind") && hash.eq_ignore_ascii_case(&actual_sha) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+            if !matched {
+                return Err(format!("checksum mismatch for mastermind (actual: {actual_sha})"));
+            }
+        }
+    }
+
+    // 3. Scan biner malware/miner (signature ter-obfuskasi sehingga tidak mendeteksi diri sendiri)
     let v = scanner::scan(&bin);
     if v.blocked {
         return Err(format!("scanner blocked: {}", v.reasons.join("; ")));
