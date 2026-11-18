@@ -1,0 +1,4 @@
+{
+  "name": "Mastermind DevContainer",
+  "postCreateCommand": "git submodule update --init --recursive"
+}
