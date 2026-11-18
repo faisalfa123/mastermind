@@ -1,0 +1,94 @@
+{
+  "mcpServers": {
+    "craft-figcraft": {
+      "command": "C:\\Users\\user\\AppData\\Local\\Programs\\ArtCraft\\FigCraft\\figcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "craft-filmcraft": {
+      "command": "C:\\Program Files\\FilmCraft\\filmcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "craft-lightcraft": {
+      "command": "C:\\Program Files\\LightCraft\\lightcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "craft-solidcraft": {
+      "command": "C:\\Program Files\\SolidCraft\\solidcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "craft-mailcraft": {
+      "command": "C:\\Program Files\\MailCraft\\mailcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "craft-anything": {
+      "command": "C:\\Program Files\\Craft Anything\\craft-anything-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-anicraft": {
+      "command": "C:\\Program Files\\ArtCraft\\AniCraft\\anicraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-cadcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\CADCraft\\cadcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-deckcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\DeckCraft\\deckcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-designcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\DesignCraft\\designcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-effectcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\EffectCraft\\effectcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-photocraft": {
+      "command": "C:\\Program Files\\ArtCraft\\PhotoCraft\\photocraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-soundcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\SoundCraft\\soundcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-vectorcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\VectorCraft\\vectorcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    },
+    "artcraft-wordcraft": {
+      "command": "C:\\Program Files\\ArtCraft\\WordCraft\\wordcraft-cli.exe",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

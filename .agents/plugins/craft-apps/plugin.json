@@ -1,0 +1,16 @@
+{
+  "name": "craft-apps",
+  "displayName": "Craft Apps & ArtCraft Suite",
+  "description": "Complete MCP tools and agent skills for FigCraft, FilmCraft, LightCraft, SolidCraft, MailCraft, Craft Anything, and the 9 ArtCraft creative applications.",
+  "version": "1.0.0",
+  "keywords": [
+    "craft",
+    "artcraft",
+    "figcraft",
+    "filmcraft",
+    "solidcraft",
+    "lightcraft",
+    "mcp",
+    "skills"
+  ]
+}
