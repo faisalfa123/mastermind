@@ -368,6 +368,8 @@ function openMastermindSystemModal() {
   const infoStatus = h('p', { class: 'dim', style: 'font-size: 11px; margin-top: 8px;' }, 'Memeriksa rilis terbaru di GitHub...');
   const actionRow = h('div', { class: 'row', style: 'margin-top: 14px; gap: 8px;' });
 
+  const activeVerVal = h('div', { class: 'drawer-metric-val', style: 'color: var(--accent);' }, 'v' + (window.__mmVersion || '...'));
+
   const modal = h('div', { id: 'sys-modal', class: 'wiz-modal-overlay' },
     h('div', { class: 'wiz-dialog', style: 'max-width: 540px;' },
       h('div', { class: 'wiz-header' },
@@ -381,7 +383,7 @@ function openMastermindSystemModal() {
         h('div', { class: 'drawer-metric-grid', style: 'margin-bottom: 14px;' },
           h('div', { class: 'drawer-metric-box' },
             h('div', { class: 'drawer-metric-label' }, 'VERSI AKTIF'),
-            h('div', { class: 'drawer-metric-val', style: 'color: var(--accent);' }, 'v' + (window.__mmVersion || '0.1.0'))
+            activeVerVal
           ),
           h('div', { class: 'drawer-metric-box' },
             h('div', { class: 'drawer-metric-label' }, 'TARGET ARCH'),
@@ -413,7 +415,10 @@ function openMastermindSystemModal() {
   document.body.appendChild(modal);
 
   api('self-update/status', 'GET').then(res => {
-    window.__mmVersion = (res.current_version || 'v0.1.0').replace(/^v/, '');
+    if (res.current_version) {
+      activeVerVal.textContent = res.current_version;
+      window.__mmVersion = res.current_version.replace(/^v/, '');
+    }
     if (res.has_update) {
       infoStatus.innerHTML = `<span style="color:var(--good); font-weight:bold;">🚀 Rilis baru tersedia: ${res.latest_version}</span> (Aktif: ${res.current_version})`;
       const updateBtn = h('button', { class: 'good', onclick: async () => {

@@ -185,11 +185,32 @@ pub fn inspect_repo(cfg: &Config, repo: &str) -> Result<Entry, String> {
 pub fn discover(cfg: &Config) -> (Vec<Entry>, Vec<Unconfigured>) {
     let (mut ok, mut bad) = (Vec::new(), Vec::new());
     let mut repos: Vec<String> = Vec::new();
+    let mut user_fetch_failed = false;
+
     match get(cfg, &format!("https://api.github.com/users/{}/repos?per_page=100&type=owner", cfg.github_owner)) {
         Ok(Value::Array(a)) => repos.extend(a.iter().filter(|r| !r["fork"].as_bool().unwrap_or(false) && !r["archived"].as_bool().unwrap_or(false)).filter_map(|r| r["full_name"].as_str().map(String::from))),
         Ok(_) => {}
-        Err(e) => bad.push(Unconfigured { repo: cfg.github_owner.clone(), reason: format!("discovery failed: {e}") }),
+        Err(e) => {
+            user_fetch_failed = true;
+            bad.push(Unconfigured { repo: cfg.github_owner.clone(), reason: format!("discovery failed: {e}") });
+        }
     }
+
+    // Jika listing repo user gagal (misal rate limit 403 atau offline), masukkan fallback repos aplikasi resmi
+    if user_fetch_failed || repos.is_empty() {
+        let core_defaults = [
+            format!("{}/bugar", cfg.github_owner),
+            format!("{}/dompetmungil", cfg.github_owner),
+            format!("{}/kompic", cfg.github_owner),
+            format!("{}/Senandung", cfg.github_owner),
+        ];
+        for r in &core_defaults {
+            if !repos.iter().any(|existing| existing.eq_ignore_ascii_case(r)) {
+                repos.push(r.clone());
+            }
+        }
+    }
+
     for extra in &cfg.extra_repos {
         if !repos.iter().any(|r| r.eq_ignore_ascii_case(extra)) {
             repos.push(extra.clone());
