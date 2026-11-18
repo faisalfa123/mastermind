@@ -13,7 +13,7 @@ window.WorkerFactory = (function () {
   const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x111111 });
   const chairMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x4a5568, metalness: 0.8, roughness: 0.2 });
   const chairCushionMaterial = new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.7 });
-  const deskTopMaterial = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+  const deskTopMaterial = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.6 });
   const deskTrimMaterial = new THREE.MeshBasicMaterial({ color: 0x48bb78 }); // LED edge
   const cupMaterial = new THREE.MeshStandardMaterial({ color: 0xf7fafc, roughness: 0.3 });
   const keyboardMaterial = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.5 });
@@ -66,28 +66,75 @@ window.WorkerFactory = (function () {
   }
 
   /**
-   * Creates a dynamic canvas texture for computer screens
+   * Draws secondary angled monitor (metrics / telemetry / off)
+   */
+  function drawSideScreen(ctx, title, status, cpuPct) {
+    ctx.fillStyle = status === 'failed' ? '#3b0a0a' : (status === 'inactive' ? '#050806' : '#091510');
+    ctx.fillRect(0, 0, 256, 160);
+
+    ctx.strokeStyle = status === 'failed' ? '#ff3b30' : (status === 'inactive' ? '#1e293b' : '#38bdf8');
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 252, 156);
+
+    if (status === 'inactive') {
+      ctx.fillStyle = '#334155';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText('STANDBY', 84, 86);
+      return;
+    }
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`TELEMETRY // ${title.toUpperCase().slice(0, 10)}`, 14, 28);
+
+    ctx.fillStyle = '#a7f3d0';
+    ctx.font = '13px monospace';
+    ctx.fillText('MEM: CGROUP ISOLATED', 14, 58);
+    ctx.fillText(`LOAD: ${(cpuPct * 0.04).toFixed(2)}`, 14, 82);
+    ctx.fillText('NET : LOCAL/LAN OK', 14, 106);
+
+    // Mini sparkline bars
+    for (let b = 0; b < 10; b++) {
+      const h = 10 + ((b * 7 + Math.round(cpuPct)) % 26);
+      ctx.fillStyle = status === 'failed' ? '#ef4444' : '#38bdf8';
+      ctx.fillRect(14 + b * 22, 145 - h, 14, h);
+    }
+  }
+
+  /**
+   * Creates dynamic canvas textures for dual computer screens
    */
   function createScreenTexture(title, status, cpuPct) {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 160;
     const ctx = canvas.getContext('2d');
-
     drawScreen(ctx, title, status, cpuPct);
-
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
-    return { texture, canvas, ctx };
+
+    const sideCanvas = document.createElement('canvas');
+    sideCanvas.width = 256;
+    sideCanvas.height = 160;
+    const sideCtx = sideCanvas.getContext('2d');
+    drawSideScreen(sideCtx, title, status, cpuPct);
+    const sideTexture = new THREE.CanvasTexture(sideCanvas);
+    sideTexture.needsUpdate = true;
+
+    return { texture, canvas, ctx, sideTexture, sideCanvas, sideCtx };
   }
 
   /**
-   * Updates an existing screen texture when status changes (e.g., Stop / Start)
+   * Updates existing dual screen textures when status changes (e.g., Stop / Start)
    */
   function updateScreenTexture(screenData, title, status, cpuPct) {
     if (!screenData || !screenData.ctx || !screenData.texture) return;
     drawScreen(screenData.ctx, title, status, cpuPct || 0);
     screenData.texture.needsUpdate = true;
+    if (screenData.sideCtx && screenData.sideTexture) {
+      drawSideScreen(screenData.sideCtx, title, status, cpuPct || 0);
+      screenData.sideTexture.needsUpdate = true;
+    }
   }
 
   /**
@@ -305,10 +352,30 @@ window.WorkerFactory = (function () {
     standBase.position.set(0, 0.77, -0.24);
     desk.add(standBase);
 
+    // Secondary Angled Monitor (Dual Monitor Setup)
+    const sideScreenMat = new THREE.MeshBasicMaterial({ map: screenData.sideTexture });
+    const sideScreenGeo = new THREE.PlaneGeometry(0.58, 0.38);
+    const sideScreenMesh = new THREE.Mesh(sideScreenGeo, sideScreenMat);
+    sideScreenMesh.position.set(0.68, 1.07, -0.06);
+    sideScreenMesh.rotation.set(-0.22, -0.55, 0);
+
+    const sideFrameGeo = new THREE.BoxGeometry(0.62, 0.42, 0.035);
+    const sideFrameMesh = new THREE.Mesh(sideFrameGeo, keyboardMaterial);
+    sideFrameMesh.position.set(0.69, 1.07, -0.08);
+    sideFrameMesh.rotation.copy(sideScreenMesh.rotation);
+    sideFrameMesh.castShadow = true;
+    desk.add(sideFrameMesh);
+    desk.add(sideScreenMesh);
+
+    const sideStand = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.28, 8), chairMetalMaterial);
+    sideStand.position.set(0.7, 0.87, -0.09);
+    desk.add(sideStand);
+
     return {
       root: desk,
       beacon,
       screenMesh,
+      sideScreenMesh,
       screenData,
       steamGroup,
       mug

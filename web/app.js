@@ -962,10 +962,7 @@ function openSlideDrawer(emp, onActionTriggered) {
     if (emp.status === 'active') {
       actionButtons.push(h('button', { class: 'ghost', onclick: async () => {
         closeSlideDrawer();
-        // 1. Update status lokal -> langsung padamkan monitor & LED merah, ubah state ke WALKING_TO_REST
         emp.status = 'inactive';
-        emp.animState = 'WALKING_TO_REST';
-        emp.walkStage = 0; // Waypoint lorong dulu sebelum ke restSlot
         if (emp.deskObj) {
           window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'inactive', 0);
           if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0xe53e3e);
@@ -974,15 +971,13 @@ function openSlideDrawer(emp, onActionTriggered) {
           emp.worker3D.plumbob.material.color.setHex(0xe53e3e);
         }
         if (onActionTriggered) onActionTriggered('stop', emp);
-        toast(`Menghentikan ${emp.name}... Layar padam & pekerja berjalan ke Zona Istirahat.`);
+        toast(`Mastermind berjalan memberi instruksi STOP ke ${emp.name}...`);
         await api(`apps/${emp.id}/stop`, 'POST').catch(e => toast(e.message));
       } }, '⏹ Stop Service'));
 
       actionButtons.push(h('button', { class: 'good', onclick: async () => {
         closeSlideDrawer();
         emp.status = 'active';
-        emp.animState = 'WALKING_TO_DESK';
-        emp.walkStage = 0;
         if (emp.deskObj) {
           window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'active', emp.cpu_pct || 25);
           if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0x48bb78);
@@ -991,15 +986,13 @@ function openSlideDrawer(emp, onActionTriggered) {
           emp.worker3D.plumbob.material.color.setHex(0x48bb78);
         }
         if (onActionTriggered) onActionTriggered('restart', emp);
-        toast(`Me-restart ${emp.name}... Mastermind mengirim data packet.`);
+        toast(`Mastermind berjalan memberi instruksi RESTART ke ${emp.name}...`);
         await api(`apps/${emp.id}/restart`, 'POST').catch(e => toast(e.message));
       } }, '🔄 Restart'));
     } else {
       actionButtons.push(h('button', { class: 'good', onclick: async () => {
         closeSlideDrawer();
         emp.status = 'active';
-        emp.animState = 'WALKING_TO_DESK';
-        emp.walkStage = 0;
         if (emp.deskObj) {
           window.WorkerFactory.updateScreenTexture(emp.deskObj.screenData, emp.name, 'active', emp.cpu_pct || 20);
           if (emp.deskObj.beacon) emp.deskObj.beacon.material.color.setHex(0x48bb78);
@@ -1008,7 +1001,7 @@ function openSlideDrawer(emp, onActionTriggered) {
           emp.worker3D.plumbob.material.color.setHex(0x48bb78);
         }
         if (onActionTriggered) onActionTriggered('start', emp);
-        toast(`Menjalankan ${emp.name}... Pekerja berjalan kembali ke meja kerja.`);
+        toast(`Mastermind berjalan memberi instruksi START ke ${emp.name}...`);
         await api(`apps/${emp.id}/start`, 'POST').catch(e => toast(e.message));
       } }, '▶ Start Service'));
     }
@@ -1196,9 +1189,6 @@ async function renderCity() {
   const interactiveObjects = [];
   if (office.coffeeMaker) interactiveObjects.push(office.coffeeMaker);
 
-  // Active Projectiles List
-  const activeProjectiles = [];
-
   // Workstation Grid layout
   const deskLocations = [
     { x: -5.5, z: -3.5 },
@@ -1216,12 +1206,13 @@ async function renderCity() {
     id: 'mastermind',
     name: 'Mastermind',
     status: 'active',
-    animState: 'WORKING',
+    animState: 'HQ_AT_DESK',
     isHQ: true,
     deskPos: new THREE.Vector3(0, 0, -9.2),
     restSlot: { pos: office.loungePos, rotY: 0 },
     curPos: new THREE.Vector3(0, 0, -9.2),
     targetPos: new THREE.Vector3(0, 0, -9.2),
+    commandTask: null,
     cpu_pct: 12.0,
     mem_mb: 8,
     category: 'kernel',
@@ -1252,7 +1243,7 @@ async function renderCity() {
     const cpuPct = app.cpu_pct != null ? app.cpu_pct : (isAct ? 18.0 + (idx * 5) % 30 : 0);
     const cat = app.source === 'docker' ? 'docker' : (app.id.includes('db') || app.id.includes('sql') ? 'database' : 'web');
 
-    // Create L-Desk
+    // Create Dual-Monitor Teak L-Desk
     const deskObj = window.WorkerFactory.createLDesk(app.id, app.status, cpuPct);
     deskObj.root.position.set(dLoc.x, 0, dLoc.z);
     scene.add(deskObj.root);
@@ -1269,9 +1260,14 @@ async function renderCity() {
     const emp = {
       id: app.id,
       name: app.id,
+      idx,
       status: app.status,
       animState: isAct ? (cpuPct > 65 ? 'OVERLOAD' : (cpuPct >= 5 ? 'WORKING' : 'IDLE')) : 'RESTING',
       walkStage: 0,
+      pendingResponse: null,
+      idleTimer: 120 + (idx * 73) % 180,
+      idleAction: null,
+      idleActionTicks: 0,
       port: app.port || 0,
       isHQ: false,
       deskPos: deskPosVec,
@@ -1299,26 +1295,26 @@ async function renderCity() {
     (worker3D.torso || worker3D.root).userData = { type: 'employee', emp };
   });
 
-  // Action Projectile Trigger handler
-  function triggerActionProjectile(action, targetEmp) {
+  // Mastermind Walking Choreography Command Handler
+  function triggerMastermindCommand(action, targetEmp) {
     playSfx('chime');
-    const projectile = window.OfficeWorld.createDataProjectile(bossEmp.curPos, targetEmp.deskPos, () => {
-      playSfx('beep');
-      levelUp(`⚡ [DATA PACKET] ${action.toUpperCase()} ${targetEmp.name}`);
-      if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
-        const nextHex = action === 'stop' ? 0xe53e3e : 0x00f5d4;
-        targetEmp.deskObj.beacon.material.color.setHex(nextHex);
-        if (action !== 'stop') {
-          setTimeout(() => {
-            if (targetEmp.deskObj && targetEmp.deskObj.beacon) {
-              targetEmp.deskObj.beacon.material.color.setHex(0x48bb78);
-            }
-          }, 1200);
-        }
-      }
-    });
-    scene.add(projectile.group);
-    activeProjectiles.push(projectile);
+    if (bossEmp.commandTask && bossEmp.commandTask.badge) {
+      bossEmp.worker3D.root.remove(bossEmp.commandTask.badge);
+    }
+    const standPoint = targetEmp.status === 'inactive' && targetEmp.animState === 'RESTING'
+      ? new THREE.Vector3(targetEmp.curPos.x + 1.2, 0, targetEmp.curPos.z)
+      : new THREE.Vector3(targetEmp.deskPos.x - 1.25, 0, targetEmp.deskPos.z);
+
+    targetEmp.pendingResponse = action;
+    bossEmp.animState = 'WALKING_TO_TARGET';
+    bossEmp.commandTask = {
+      action,
+      targetEmp,
+      standPoint,
+      stage: bossEmp.curPos.z < -6.2 ? 0 : 1, // Keluar pintu kaca jika masih di dalam HQ
+      instructTicks: 42,
+      badge: null
+    };
   }
 
   // Click & Raycasting Detection
@@ -1346,7 +1342,7 @@ async function renderCity() {
         if (controls) {
           controls.target.set(emp.curPos.x, 1.0, emp.curPos.z);
         }
-        openSlideDrawer(emp, triggerActionProjectile);
+        openSlideDrawer(emp, triggerMastermindCommand);
       } else if (type === 'coffee') {
         playSfx('chime');
         toast('☕ Mesin Kopi HQ: Secangkir kopi hangat diseduh untuk pekerja service!');
@@ -1373,13 +1369,14 @@ async function renderCity() {
 
     if (controls) controls.update();
 
-    // Update active projectiles
-    for (let p = activeProjectiles.length - 1; p >= 0; p--) {
-      const active = activeProjectiles[p].update();
-      if (!active) {
-        scene.remove(activeProjectiles[p].group);
-        activeProjectiles.splice(p, 1);
-      }
+    // Animate Koi Fish in mini pond
+    if (office.koiFish) {
+      office.koiFish.forEach(k => {
+        k.angle += k.speed;
+        k.mesh.position.x = Math.cos(k.angle) * k.radius;
+        k.mesh.position.z = Math.sin(k.angle) * k.radius;
+        k.mesh.rotation.y = -k.angle;
+      });
     }
 
     // Check SoC thermal state on Mastermind boss office
@@ -1387,38 +1384,159 @@ async function renderCity() {
     if (window.__lastSysTemp) sysTemp = window.__lastSysTemp;
     if (sysTemp > 75) {
       office.socAlertLight.intensity = Math.sin(tick * 0.3) > 0 ? 3.0 : 0.5;
-      bossEmp.targetPos.x = Math.sin(tick * 0.08) * 2.2;
     } else {
       office.socAlertLight.intensity = 0;
-      bossEmp.targetPos.set(0, 0, -9.2);
     }
 
-    // Animate Employees Choreography State Machine
+    // Animate Employees & Mastermind Choreography State Machine
     employees.forEach(emp => {
       const isAct = emp.status === 'active';
       const cpu = emp.cpu_pct || 0;
 
-      // Tentukan target waypoint untuk pathfinding (hindari meja)
-      let currentTarget = emp.deskPos;
-      if (!emp.isHQ) {
-        if (emp.animState === 'WALKING_TO_REST') {
-          currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.restSlot.pos;
-        } else if (emp.animState === 'WALKING_TO_DESK') {
-          currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.deskPos;
-        } else if (!isAct) {
-          currentTarget = emp.restSlot.pos;
+      // -------------------------------------------------------------
+      // A. MASTERMIND (THE BOSS) WALKING CHOREOGRAPHY
+      // -------------------------------------------------------------
+      if (emp.isHQ) {
+        if (emp.animState === 'WALKING_TO_TARGET' && emp.commandTask) {
+          const task = emp.commandTask;
+          const wp = task.stage === 0 ? office.hqDoorPos : task.standPoint;
+          const dx = wp.x - emp.curPos.x;
+          const dz = wp.z - emp.curPos.z;
+          const dist = Math.hypot(dx, dz);
+
+          if (dist > 0.16) {
+            emp.curPos.x += (dx / dist) * 0.18;
+            emp.curPos.z += (dz / dist) * 0.18;
+            emp.worker3D.root.rotation.y = Math.atan2(dx, dz);
+
+            const swing = Math.sin(tick * 0.6) * 0.55;
+            if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = swing;
+            if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = -swing;
+            emp.worker3D.leftArm.upperArm.rotation.x = -swing * 0.7;
+            emp.worker3D.rightArm.upperArm.rotation.x = swing * 0.7;
+            emp.worker3D.torso.rotation.x = 0.05;
+            emp.worker3D.head.rotation.x = 0;
+            emp.worker3D.root.position.y = Math.abs(Math.sin(tick * 0.6)) * 0.08;
+            if (tick % 10 === 0) playSfx('step');
+          } else if (task.stage === 0) {
+            task.stage = 1;
+          } else {
+            // Arrived beside target worker -> GIVING_INSTRUCTION
+            emp.animState = 'GIVING_INSTRUCTION';
+            emp.worker3D.root.position.y = 0;
+            if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = 0;
+            if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = 0;
+
+            playSfx('beep');
+            levelUp(`👑 [INSTRUKSI] ${task.action.toUpperCase()} -> ${task.targetEmp.name}`);
+            if (window.OfficeWorld.createCommandIcon) {
+              task.badge = window.OfficeWorld.createCommandIcon(task.action.toUpperCase());
+              emp.worker3D.root.add(task.badge);
+            }
+
+            // Trigger worker response
+            const tEmp = task.targetEmp;
+            if (task.action === 'stop') {
+              tEmp.animState = 'WALKING_TO_REST';
+              tEmp.walkStage = 0;
+              tEmp.idleAction = null;
+            } else {
+              tEmp.animState = 'WALKING_TO_DESK';
+              tEmp.walkStage = 0;
+              tEmp.idleAction = null;
+            }
+            tEmp.pendingResponse = null;
+          }
+        } else if (emp.animState === 'GIVING_INSTRUCTION' && emp.commandTask) {
+          const task = emp.commandTask;
+          const tPos = task.targetEmp.curPos;
+          emp.worker3D.root.rotation.y = Math.atan2(tPos.x - emp.curPos.x, tPos.z - emp.curPos.z);
+          emp.worker3D.rightArm.upperArm.rotation.x = -1.1 + Math.sin(tick * 0.45) * 0.16;
+          emp.worker3D.rightArm.forearmGroup.rotation.x = -0.35;
+          emp.worker3D.leftArm.upperArm.rotation.x = -0.15;
+          emp.worker3D.head.rotation.x = Math.sin(tick * 0.5) * 0.2;
+          task.instructTicks--;
+
+          if (task.instructTicks <= 0) {
+            if (task.badge) {
+              emp.worker3D.root.remove(task.badge);
+              task.badge = null;
+            }
+            emp.animState = 'WALKING_BACK_TO_HQ';
+            task.stage = 0;
+          }
+        } else if (emp.animState === 'WALKING_BACK_TO_HQ' && emp.commandTask) {
+          const task = emp.commandTask;
+          const wp = task.stage === 0 ? office.hqDoorPos : emp.deskPos;
+          const dx = wp.x - emp.curPos.x;
+          const dz = wp.z - emp.curPos.z;
+          const dist = Math.hypot(dx, dz);
+
+          if (dist > 0.16) {
+            emp.curPos.x += (dx / dist) * 0.18;
+            emp.curPos.z += (dz / dist) * 0.18;
+            emp.worker3D.root.rotation.y = Math.atan2(dx, dz);
+
+            const swing = Math.sin(tick * 0.6) * 0.55;
+            if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = swing;
+            if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = -swing;
+            emp.worker3D.leftArm.upperArm.rotation.x = -swing * 0.7;
+            emp.worker3D.rightArm.upperArm.rotation.x = swing * 0.7;
+            emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+            emp.worker3D.head.rotation.x = 0;
+            emp.worker3D.root.position.y = Math.abs(Math.sin(tick * 0.6)) * 0.08;
+            if (tick % 10 === 0) playSfx('step');
+          } else if (task.stage === 0) {
+            task.stage = 1;
+          } else {
+            emp.animState = 'HQ_AT_DESK';
+            emp.commandTask = null;
+          }
+        } else {
+          // HQ_AT_DESK: Mastermind sits facing 3 curved monitors (Math.PI)
+          emp.worker3D.root.position.y = 0;
+          if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = 0;
+          if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = 0;
+          const scanRot = Math.PI + Math.sin(tick * 0.03) * 0.25;
+          emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, scanRot, 0.12);
+          if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = Math.sin(tick * 0.03) * 0.25;
+          emp.worker3D.leftArm.upperArm.rotation.x = -0.55 + Math.sin(tick * 0.25) * 0.08;
+          emp.worker3D.rightArm.upperArm.rotation.x = -0.55 + Math.cos(tick * 0.25) * 0.08;
+          emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+          emp.worker3D.torso.rotation.x = 0.06;
+          emp.worker3D.head.rotation.x = 0.08;
         }
-      } else {
-        currentTarget = emp.targetPos;
+
+        emp.worker3D.root.position.x = emp.curPos.x;
+        emp.worker3D.root.position.z = emp.curPos.z;
+        if (emp.worker3D.plumbob) emp.worker3D.plumbob.rotation.y += 0.06;
+        return;
+      }
+
+      // -------------------------------------------------------------
+      // B. SERVICE WORKER STATE MACHINE & DYNAMIC MICRO-ACTIVITIES
+      // -------------------------------------------------------------
+      let currentTarget = emp.deskPos;
+      if (emp.animState === 'WALKING_TO_REST') {
+        currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.restSlot.pos;
+      } else if (emp.animState === 'WALKING_TO_DESK') {
+        currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.deskPos;
+      } else if (emp.idleAction === 'WALK_COFFEE') {
+        currentTarget = emp.walkStage === 0 ? emp.aislePos : office.coffeeSpot;
+      } else if (emp.idleAction === 'AT_COFFEE') {
+        currentTarget = office.coffeeSpot;
+      } else if (emp.idleAction === 'RETURN_FROM_COFFEE') {
+        currentTarget = emp.walkStage === 0 ? emp.aislePos : emp.deskPos;
+      } else if (!isAct) {
+        currentTarget = emp.restSlot.pos;
       }
 
       const dx = currentTarget.x - emp.curPos.x;
       const dz = currentTarget.z - emp.curPos.z;
       const dist = Math.hypot(dx, dz);
-      const isWalking = dist > 0.12;
+      const isWalking = dist > 0.14;
 
       if (isWalking) {
-        // Berputar menghadap arah jalan & animasi walking cycle (lengan + kaki + bobbing)
         emp.curPos.x += (dx / dist) * 0.14;
         emp.curPos.z += (dz / dist) * 0.14;
         emp.worker3D.root.rotation.y = Math.atan2(dx, dz);
@@ -1428,36 +1546,52 @@ async function renderCity() {
         if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = -swing;
         emp.worker3D.leftArm.upperArm.rotation.x = -swing * 0.7;
         emp.worker3D.rightArm.upperArm.rotation.x = swing * 0.7;
+        emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
         emp.worker3D.torso.rotation.x = 0.05;
         emp.worker3D.head.rotation.x = 0;
+        emp.worker3D.head.rotation.y = 0;
         emp.worker3D.root.position.y = Math.abs(Math.sin(tick * 0.55)) * 0.08;
         if (tick % 10 === 0) playSfx('step');
       } else {
-        // Lanjut ke stage pathfinding berikutnya atau selesai sampai tujuan
-        if ((emp.animState === 'WALKING_TO_REST' || emp.animState === 'WALKING_TO_DESK') && emp.walkStage === 0) {
+        if ((emp.animState === 'WALKING_TO_REST' || emp.animState === 'WALKING_TO_DESK' || emp.idleAction === 'WALK_COFFEE' || emp.idleAction === 'RETURN_FROM_COFFEE') && emp.walkStage === 0) {
           emp.walkStage = 1;
         } else {
           if (emp.animState === 'WALKING_TO_REST') emp.animState = 'RESTING';
           if (emp.animState === 'WALKING_TO_DESK') emp.animState = cpu > 65 ? 'OVERLOAD' : (cpu >= 5 ? 'WORKING' : 'IDLE');
 
+          if (emp.idleAction === 'WALK_COFFEE') {
+            emp.idleAction = 'AT_COFFEE';
+            emp.idleActionTicks = 60;
+          } else if (emp.idleAction === 'RETURN_FROM_COFFEE') {
+            emp.idleAction = null;
+          }
+
           emp.worker3D.root.position.y = 0;
           if (emp.worker3D.leftLeg) emp.worker3D.leftLeg.rotation.x = 0;
           if (emp.worker3D.rightLeg) emp.worker3D.rightLeg.rotation.x = 0;
 
-          if (emp.isHQ) {
-            // Boss menghadap monitor (Math.PI) dan memindai pelan
-            const scanRot = Math.PI + Math.sin(tick * 0.03) * 0.25;
-            emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, scanRot, 0.12);
-            if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = Math.sin(tick * 0.03) * 0.25;
+          if (emp.idleAction === 'AT_COFFEE') {
+            emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, 0, 0.15);
+            emp.worker3D.torso.rotation.x = 0;
+            emp.worker3D.rightArm.upperArm.rotation.x = -1.05;
+            emp.worker3D.rightArm.forearmGroup.rotation.x = -0.65;
+            emp.worker3D.leftArm.upperArm.rotation.x = -0.1;
+            emp.idleActionTicks--;
+            if (emp.idleActionTicks <= 0) {
+              emp.idleAction = 'RETURN_FROM_COFFEE';
+              emp.walkStage = 0;
+            }
           } else if (!isAct || emp.animState === 'RESTING') {
-            // RESTING di Chill Lounge Sofa: menghadap ke sofa/depan, kepala mengangguk tertidur
+            // RESTING di Bumiayu Chill Lounge
             emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, emp.restSlot.rotY, 0.15);
             emp.worker3D.torso.rotation.x = -0.1;
             emp.worker3D.head.rotation.x = 0.35 + Math.sin(tick * 0.06) * 0.08;
+            emp.worker3D.head.rotation.y = 0;
             emp.worker3D.leftArm.upperArm.rotation.x = 0.1;
             emp.worker3D.rightArm.upperArm.rotation.x = 0.1;
+            emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
           } else {
-            // Duduk di kursi meja kerja menghadap monitor (Math.PI)
+            // Duduk di kursi meja kerja menghadap dual monitor (Math.PI)
             const targetFacing = Math.PI;
             if (cpu > 65) {
               // OVERLOAD: mengetik cepat 3x lipat, kepala geleng panik
@@ -1466,31 +1600,56 @@ async function renderCity() {
               emp.worker3D.torso.rotation.x = 0.14;
               emp.worker3D.leftArm.upperArm.rotation.x = -0.75 + Math.sin(furious) * 0.25;
               emp.worker3D.rightArm.upperArm.rotation.x = -0.75 + Math.cos(furious) * 0.25;
+              emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
               emp.worker3D.head.rotation.y = Math.sin(tick * 0.8) * 0.18;
-              if (emp.chair3D) emp.chair3D.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
+              if (emp.chairObj) emp.chairObj.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
             } else if (cpu >= 5) {
-              // WORKING: menghadap monitor, badan condong ke depan, tangan mengetik di keyboard
+              // WORKING: menghadap monitor, mengetik, sesekali menoleh mengecek dual monitor
               emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing, 0.2);
               const speed = tick * 0.5;
               emp.worker3D.torso.rotation.x = 0.12;
               emp.worker3D.leftArm.upperArm.rotation.x = -0.68 + Math.sin(speed) * 0.14;
               emp.worker3D.rightArm.upperArm.rotation.x = -0.68 + Math.cos(speed) * 0.14;
+              emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
               emp.worker3D.head.rotation.x = 0.15;
-              emp.worker3D.head.rotation.y = 0;
+              emp.worker3D.head.rotation.y = Math.sin(tick * 0.07 + emp.idx) * 0.28;
+              if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = Math.sin(tick * 0.04 + emp.idx) * 0.07;
             } else {
-              // IDLE: bersandar santai menghadap monitor, kursi berputar halus, sesekali angkat kopi
-              const swivel = Math.sin(tick * 0.04) * 0.12;
-              emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing + swivel, 0.15);
-              if (emp.chair3D) emp.chair3D.seatGroup.rotation.y = swivel;
-              emp.worker3D.torso.rotation.x = -0.08;
-              emp.worker3D.head.rotation.x = 0;
-              emp.worker3D.head.rotation.y = 0;
-              if (Math.sin(tick * 0.02) > 0.85) {
-                emp.worker3D.rightArm.upperArm.rotation.x = -1.1;
-                emp.worker3D.rightArm.forearmGroup.rotation.x = -0.6;
-              } else {
-                emp.worker3D.rightArm.upperArm.rotation.x = -0.2;
+              // IDLE: aktivitas mikro dinamis (peregangan / jalan ke dispenser kopi)
+              emp.idleTimer--;
+              if (emp.idleTimer <= 0 && !emp.idleAction) {
+                emp.idleTimer = 240 + Math.floor(Math.random() * 240);
+                if (Math.random() < 0.45) {
+                  emp.idleAction = 'WALK_COFFEE';
+                  emp.walkStage = 0;
+                } else {
+                  emp.idleAction = 'STRETCH';
+                  emp.idleActionTicks = 70;
+                }
+              }
+
+              if (emp.idleAction === 'STRETCH') {
+                emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing, 0.15);
+                emp.worker3D.torso.rotation.x = -0.15;
+                emp.worker3D.leftArm.upperArm.rotation.x = -2.4 + Math.sin(tick * 0.2) * 0.15;
+                emp.worker3D.rightArm.upperArm.rotation.x = -2.4 + Math.sin(tick * 0.2) * 0.15;
                 emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+                emp.idleActionTicks--;
+                if (emp.idleActionTicks <= 0) emp.idleAction = null;
+              } else {
+                const swivel = Math.sin(tick * 0.04 + emp.idx) * 0.12;
+                emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing + swivel, 0.15);
+                if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = swivel;
+                emp.worker3D.torso.rotation.x = -0.08;
+                emp.worker3D.head.rotation.x = 0;
+                emp.worker3D.head.rotation.y = Math.sin(tick * 0.05 + emp.idx) * 0.18;
+                if (Math.sin(tick * 0.02 + emp.idx) > 0.85) {
+                  emp.worker3D.rightArm.upperArm.rotation.x = -1.1;
+                  emp.worker3D.rightArm.forearmGroup.rotation.x = -0.6;
+                } else {
+                  emp.worker3D.rightArm.upperArm.rotation.x = -0.2;
+                  emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+                }
               }
             }
           }
