@@ -66,12 +66,25 @@ pub struct Installed {
     pub extra_args: Vec<String>,
     #[serde(default)]
     pub is_external: bool,
+    #[serde(default)]
+    pub prev_version: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default = "d_lang")]
+    pub language: String,
+    #[serde(default)]
+    pub sandbox_tools: Vec<String>,
+    #[serde(default)]
+    pub folder_paths: Vec<String>,
+    #[serde(default)]
+    pub internal_port: Option<u16>,
 }
 
 fn d_prio() -> u8 { 50 }
 fn d_true() -> bool { true }
 fn d_mem() -> u32 { 128 }
 fn d_cpu() -> u8 { 50 }
+fn d_lang() -> String { "go".into() }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PersistedSession {

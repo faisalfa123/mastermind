@@ -135,28 +135,118 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.className = 'sho
 function levelUp(txt) { const d = h('div', { class: 'levelup' }, h('span', {}, txt)); document.body.append(d); setTimeout(() => d.remove(), 1300); }
 function loading() { view.replaceChildren(h('p', { class: 'loading' }, h('i'), h('i'), h('i'))); }
 
-/* ==========================================================================
-   TEMA ZEN & INTERAKSI MATA KODAMA (MASCOT)
-   ========================================================================== */
+/* Dual Mode Ghibli & Kalender Event Musim Indonesia + Internasional */
+const SEASON_CATALOG = [
+  { id: 'ramadhan', region: 'Indonesia', name: 'Ramadhan & Lebaran', desc: 'Lentera ketupat & bulan sabit hangat (Maret-April)' },
+  { id: 'merdeka',  region: 'Indonesia', name: '17 Agustus (Merdeka)', desc: 'Nuansa merah-putih lembut & lampion kemerdekaan (Agustus)' },
+  { id: 'hujan',    region: 'Indonesia', name: 'Musim Hujan', desc: 'Rintik hujan cat air & kabut sejuk (November-Februari)' },
+  { id: 'kemarau',  region: 'Indonesia', name: 'Musim Kemarau', desc: 'Langit cerah hangat & benih dandelion (Mei-Oktober)' },
+  { id: 'sakura',   region: 'Internasional', name: 'Spring (Sakura)', desc: 'Kelopak sakura lembut berterbangan (Maret-Mei)' },
+  { id: 'summer',   region: 'Internasional', name: 'Summer (Kunang-kunang)', desc: 'Kunang-kunang keemasan di padang rumput (Juni-Agustus)' },
+  { id: 'autumn',   region: 'Internasional', name: 'Autumn (Maple)', desc: 'Daun maple jingga gugur perlahan (September-November)' },
+  { id: 'winter',   region: 'Internasional', name: 'Winter (Natal & Tahun Baru)', desc: 'Salju lembut & langit musim dingin (Desember-Januari)' }
+];
+
+function detectAutoSeason(now = new Date()) {
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  // Event Indonesia prioritas berdasarkan kalender tahunan
+  if (m === 8 && d >= 1 && d <= 25) return 'merdeka';
+  if ((m === 12 && d >= 18) || (m === 1 && d <= 7)) return 'winter';
+  if ((m === 3 && d >= 15) || (m === 4 && d <= 15)) return 'sakura';
+  if (m === 2 && d >= 18 || (m === 3 && d <= 14)) return 'ramadhan';
+  if (m >= 9 && m <= 11) return 'autumn';
+  if (m === 12 || m === 1 || m === 2) return 'hujan';
+  if (m >= 6 && m <= 7) return 'summer';
+  return 'kemarau';
+}
+
+function applyMode(mode) {
+  const m = mode === 'night' ? 'night' : 'day';
+  document.documentElement.dataset.mode = m;
+  localStorage.setItem('mm-mode', m);
+  const btn = $('#mode-toggle');
+  const lbl = $('#mode-toggle-label');
+  if (btn) btn.setAttribute('aria-pressed', m === 'night' ? 'true' : 'false');
+  if (lbl) lbl.textContent = m === 'night' ? 'Mode Malam' : 'Mode Siang';
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', m === 'night' ? '#141923' : '#f4ede0');
+  if (window.MastermindScene) window.MastermindScene.setMode(m);
+}
+
+function applySeason(pref) {
+  const isAuto = !pref || pref === 'auto';
+  const effective = isAuto ? detectAutoSeason() : pref;
+  document.documentElement.dataset.season = effective;
+  localStorage.setItem('mm-season-pref', isAuto ? 'auto' : effective);
+  const meta = SEASON_CATALOG.find(s => s.id === effective) || SEASON_CATALOG[3];
+  const pill = $('#season-pill-text');
+  if (pill) pill.textContent = isAuto ? `Auto: ${meta.name}` : meta.name;
+  const footerInfo = $('#footer-season-info');
+  if (footerInfo) footerInfo.textContent = `${meta.region}: ${meta.name}`;
+  const sel = $('#season-select');
+  if (sel) sel.value = isAuto ? 'auto' : effective;
+  if (window.MastermindScene) window.MastermindScene.setSeason(effective);
+}
+
+function renderSeasonCalendarModal() {
+  const list = $('#season-calendar-list');
+  const dlg = $('#season-dlg');
+  if (!list || !dlg) return;
+  const current = document.documentElement.dataset.season || 'kemarau';
+  const pref = localStorage.getItem('mm-season-pref') || 'auto';
+  const items = [
+    h('button', {
+      type: 'button',
+      class: 'season-cal-item' + (pref === 'auto' ? ' active' : ''),
+      onclick: () => { applySeason('auto'); dlg.close(); toast('Musim diatur ke Otomatis (Kalender)'); }
+    }, h('strong', {}, 'Otomatis (Kalender Hari Ini)'), h('small', {}, `Terdeteksi saat ini: ${detectAutoSeason().toUpperCase()}`))
+  ];
+  for (const s of SEASON_CATALOG) {
+    items.push(h('button', {
+      type: 'button',
+      class: 'season-cal-item' + (pref !== 'auto' && current === s.id ? ' active' : ''),
+      onclick: () => { applySeason(s.id); dlg.close(); toast(`Pratinjau Musim: ${s.name}`); }
+    }, h('strong', {}, s.name), h('small', {}, `${s.region} - ${s.desc}`)));
+  }
+  list.replaceChildren(...items);
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+}
+
 function initTheme() {
-  const saved = localStorage.getItem('mm-theme') || 'matcha';
-  document.documentElement.dataset.theme = saved;
-  const sel = $('#theme-select');
-  if (sel) {
-    sel.value = saved;
-    sel.addEventListener('change', () => {
-      document.documentElement.dataset.theme = sel.value;
-      localStorage.setItem('mm-theme', sel.value);
-      if (window.MastermindScene) window.MastermindScene.setTheme(sel.value);
-      toast('TEMA: ' + sel.options[sel.selectedIndex].text.toUpperCase());
+  const savedMode = localStorage.getItem('mm-mode') || 'day';
+  const savedSeason = localStorage.getItem('mm-season-pref') || 'auto';
+  applyMode(savedMode);
+  applySeason(savedSeason);
+
+  const modeBtn = $('#mode-toggle');
+  if (modeBtn) {
+    modeBtn.addEventListener('click', () => {
+      const next = document.documentElement.dataset.mode === 'night' ? 'day' : 'night';
+      applyMode(next);
+      toast(next === 'night' ? 'Mode Malam (Lentera) aktif' : 'Mode Siang (Ghibli) aktif');
     });
   }
+
+  const seasonSel = $('#season-select');
+  if (seasonSel) {
+    seasonSel.addEventListener('change', () => {
+      applySeason(seasonSel.value);
+      toast('Suasana: ' + seasonSel.options[seasonSel.selectedIndex].text);
+    });
+  }
+
+  const calBtn = $('#season-calendar-btn');
+  if (calBtn) {
+    calBtn.addEventListener('click', renderSeasonCalendarModal);
+  }
+
   const animSel = $('#anim-select');
   if (animSel) {
     animSel.value = localStorage.getItem('mm-anim') || 'full';
     animSel.addEventListener('change', () => {
       if (window.MastermindScene) window.MastermindScene.setAnimMode(animSel.value);
-      toast(animSel.options[animSel.selectedIndex].text.toUpperCase());
+      toast(animSel.options[animSel.selectedIndex].text);
     });
   }
 }
@@ -943,23 +1033,67 @@ function appCard(a) {
   } else {
     frontActions.push(act('start', 'Start', 'good'));
   }
-  frontActions.push(h('button', { class: 'ghost', onclick: () => showAppLogs(a.id) }, 'Log'));
-  if (a.update_available) frontActions.push(act('update', 'Update ' + a.version, ''));
+  frontActions.push(h('button', { type: 'button', class: 'ghost', onclick: () => showAppLogs(a.id) }, 'Log'));
+  if (a.update_available) {
+    frontActions.push(act('update', `Perbarui ke ${a.latest_version || a.version}`, 'good'));
+  }
+  if (a.has_rollback) {
+    frontActions.push(h('button', {
+      type: 'button',
+      class: 'ghost',
+      title: 'Kembalikan ke snapshot versi sebelumnya',
+      onclick: async () => {
+        const ok = await sensitive(`ROLLBACK ${a.id} ke versi sebelumnya?`, code => api(`apps/${a.id}/rollback`, 'POST', { totp: code }));
+        if (ok) {
+          toast(`Rollback ${a.id} selesai`);
+          render();
+        }
+      }
+    }, 'Rollback'));
+  }
   frontActions.push(act('remove', 'Hapus', 'danger'));
-  frontActions.push(h('button', { class: 'good', style: 'margin-left: auto;', onclick: toggleFlip }, '⚙ Konfigurasi'));
+  frontActions.push(h('button', { type: 'button', class: 'ghost', style: 'margin-left: auto;', onclick: toggleFlip }, 'Konfigurasi'));
+
+  const installedVer = (a.installed && a.installed.version) ? a.installed.version : a.version;
+  const updateBanner = a.update_available
+    ? h('div', { class: 'update-pill' }, `Update Tersedia: ${installedVer} -> ${a.latest_version || a.version}`)
+    : null;
+
+  const warningsBox = (Array.isArray(a.warnings) && a.warnings.length)
+    ? h('div', { class: 'warn-list-box' },
+        h('strong', {}, 'Catatan Pemeriksaan (Soft Gate):'),
+        h('ul', {}, ...a.warnings.map(w => h('li', {}, w))))
+    : null;
+
+  const sandboxTags = (Array.isArray(a.sandbox_tools) && a.sandbox_tools.length)
+    ? h('span', { class: 'tag sandbox-pill', title: 'Tool disalin/diunduh ke folder sandbox internal app' }, `Sandbox: ${a.sandbox_tools.join(', ')}`)
+    : null;
+
+  const folderTags = (Array.isArray(a.folder_paths) && a.folder_paths.length)
+    ? h('span', { class: 'tag', title: 'Folder terizin (aturan ketat)' }, `Folder: ${a.folder_paths.length}`)
+    : null;
+
+  const portRedirectTag = a.internal_port
+    ? h('span', { class: 'tag', title: `Port bawaan ${a.internal_port} bentrok, dialihkan otomatis ke ${a.port}` }, `Auto-Port :${a.port} (asal :${a.internal_port})`)
+    : null;
 
   const frontFace = h('div', { class: 'card flip-card-front' },
-    h('div', { style: 'display: flex; justify-content: space-between; align-items: flex-start;' },
-      h('h3', {}, a.id),
-      h('button', { class: 'ghost', style: 'padding: 3px 8px; font-size: 11px;', title: 'Ubah Konfigurasi', onclick: toggleFlip }, '⚙ Edit')
+    h('div', { style: 'display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;' },
+      h('h3', { style: 'margin: 0 0 4px;' }, a.id),
+      h('button', { type: 'button', class: 'ghost', style: 'padding: 4px 10px; font-size: 12px;', title: 'Ubah Konfigurasi', onclick: toggleFlip }, 'Edit')
     ),
+    updateBanner,
     h('p', {}, a.description || a.repo),
     h('p', {},
       warnBadge,
       h('span', { class: 'tag' }, 'PRIO ' + a.priority),
-      h('span', { class: 'tag' }, a.language.toUpperCase()),
-      h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`)
+      h('span', { class: 'tag' }, (a.language || 'app').toUpperCase()),
+      h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`),
+      sandboxTags,
+      folderTags,
+      portRedirectTag
     ),
+    warningsBox,
     portBanner,
     tabBar,
     tabStatusContent,
@@ -1250,10 +1384,10 @@ async function renderSites() {
   const repoInput = h('input', { placeholder: 'faisalfa123/Senandung atau https://github.com/...', autocomplete: 'off' });
   const resultBox = h('div', { class: 'sites-result', style: 'margin-top:14px' });
 
-  const inspectBtn = h('button', { class: 'good', onclick: async () => {
+  const inspectBtn = h('button', { type: 'button', class: 'good', onclick: async () => {
     const val = repoInput.value.trim();
     if (!val) { toast('Masukkan nama repo atau URL GitHub'); return; }
-    resultBox.replaceChildren(h('p', { class: 'loading' }, 'Memeriksa repo...'));
+    resultBox.replaceChildren(h('p', { class: 'loading' }, 'Memeriksa repo dan mendeteksi tipe webapp...'));
     try {
       const res = await api('sites/inspect', 'POST', { repo: val });
       if (!res.ok) {
@@ -1263,15 +1397,85 @@ async function renderSites() {
           h('p', { class: 'dim' }, 'Solusi: Buat file .batasan.toml di menu "RACIK BATASAN", lalu tambahkan ke rilis repo GitHub Anda.')));
         return;
       }
+
+      if (res.adaptive) {
+        const f = res.findings || {};
+        const folders = Array.isArray(f.folder_paths) ? f.folder_paths : [];
+        const tools = Array.isArray(f.tools) ? f.tools : [];
+        const warns = Array.isArray(res.warnings) ? res.warnings : [];
+
+        const folderChk = h('input', { type: 'checkbox', checked: folders.length === 0 });
+        const adaptiveInstallBtn = h('button', {
+          type: 'button',
+          class: 'good',
+          disabled: folders.length > 0,
+          onclick: async () => {
+            const ok = await sensitive(
+              `PASANG ADAPTIF ${res.id} (${(f.language || 'webapp').toUpperCase()})?\nPort: :${res.suggested_port}\nHard Gate Malware & Antivirus wajib lolos.`,
+              code => api('apps/adaptive-install', 'POST', {
+                repo: res.repo,
+                batasan_toml: res.draft_toml,
+                asset_url: res.asset_url,
+                version: 'adaptive',
+                totp: code
+              })
+            );
+            if (ok) {
+              toast(`Instalasi adaptif ${res.id} berhasil`);
+              tab = 'apps';
+              render();
+            }
+          }
+        }, `Pasang Adaptif (Port :${res.suggested_port})`);
+
+        if (folders.length > 0) {
+          folderChk.addEventListener('change', () => {
+            adaptiveInstallBtn.disabled = !folderChk.checked;
+          });
+        }
+
+        const folderBox = folders.length > 0
+          ? h('div', { class: 'folder-perm-box' },
+              h('strong', {}, 'Permintaan Akses Folder Eksternal (Aturan Ketat):'),
+              h('p', { class: 'dim', style: 'margin:4px 0;' }, `Hanya path terizin (/mnt/*, /media/*, /srv/*): ${folders.join(', ')}`),
+              h('label', {}, folderChk, h('span', {}, 'Saya menyetujui akses folder terbatas di atas (direktori sistem /etc, /root, /home tetap diblokir keras).')))
+          : null;
+
+        const sandboxBox = tools.length > 0
+          ? h('p', {}, h('span', { class: 'tag sandbox-pill' }, `Sandbox Tool Lokal: ${tools.join(', ')} (tidak mengubah OS global)`))
+          : null;
+
+        const warnBox = warns.length > 0
+          ? h('div', { class: 'warn-list-box' },
+              h('strong', {}, 'Tanda Pemeriksaan (Soft Gate):'),
+              h('ul', {}, ...warns.map(w => h('li', {}, w))))
+          : null;
+
+        resultBox.replaceChildren(h('div', { class: 'adaptive-plan-box' },
+          h('h4', { style: 'margin:0 0 6px;' }, `Mode Adaptif WebApp: ${res.id}`),
+          h('p', { class: 'dim', style: 'margin:0 0 8px;' }, `Repo: ${res.repo}`),
+          h('p', {},
+            h('span', { class: 'tag' }, `TIPE: ${(f.language || 'go').toUpperCase()}`),
+            h('span', { class: 'tag' }, res.port_conflict ? `AUTO-PORT :${res.suggested_port} (bentrok :${res.desired_port})` : `PORT :${res.suggested_port}`),
+            h('span', { class: 'tag sandbox-pill' }, 'HARD GATE: MALWARE & ANTIVIRUS WAJIB LOLOS')
+          ),
+          sandboxBox,
+          warnBox,
+          folderBox,
+          h('div', { class: 'row', style: 'margin-top:12px;' }, adaptiveInstallBtn)
+        ));
+        return;
+      }
+
       const e = res.entry;
-      const addAndInstallBtn = h('button', { class: 'ghost', onclick: async () => {
+      const addAndInstallBtn = h('button', { type: 'button', class: 'ghost', onclick: async () => {
         const ok = await sensitive(`TAMBAHKAN SITUS ${e.repo}?`, code => api('sites/add', 'POST', { repo: e.repo, totp: code }));
         if (!ok) return;
-        toast('Situs ditambahkan ke katalog!');
+        toast('Situs ditambahkan ke katalog');
         tab = 'catalog';
         render();
-      } }, 'TAMBAHKAN KE KATALOG');
-      const directInstallBtn = h('button', { class: 'good', onclick: () => openWizard(e.repo) }, 'ATUR BATASAN & INSTALL LANGSUNG');
+      } }, 'Tambahkan ke Katalog');
+      const directInstallBtn = h('button', { type: 'button', class: 'good', onclick: () => openWizard(e.repo) }, 'Atur Batasan & Pasang');
 
       resultBox.replaceChildren(h('div', { class: 'card' },
         h('h3', {}, `${e.id} (${e.version})`),
@@ -1282,13 +1486,13 @@ async function renderSites() {
           h('span', { class: 'tag' }, `${e.memory_max_mb}MB / ${e.cpu_quota_pct}% CPU`)),
         h('div', { class: 'row' }, directInstallBtn, addAndInstallBtn)));
     } catch (err) {
-      resultBox.replaceChildren(h('p', { class: 'err' }, err.message.toUpperCase()));
+      resultBox.replaceChildren(h('p', { class: 'err' }, err.message));
     }
-  } }, 'PERIKSA REPO');
+  } }, 'Periksa Repo');
 
   card.append(
-    h('h3', {}, 'PASANG APLIKASI DARI SITUS / REPO GITHUB'),
-    h('p', { class: 'dim' }, 'Masukkan alamat repository GitHub publik (misal: faisalfa123/Senandung atau https://github.com/faisalfa123/DompetMungil)'),
+    h('h3', {}, 'PASANG APLIKASI ADAPTIF DARI GITHUB'),
+    h('p', { class: 'dim' }, 'Masukkan alamat repository GitHub publik (Go, Rust, Node.js, Python, atau Static WebApp). Mastermind otomatis mendeteksi tipe app, port bebas, sandbox tool, dan wajib lolos cek malware.'),
     h('div', { class: 'row' }, repoInput, inspectBtn),
     resultBox
   );
@@ -1304,7 +1508,7 @@ async function renderSites() {
           h('tr', {}, h('th', {}, 'REPOSITORY'), h('th', {}, 'AKSI')),
           s.sites.map(r => h('tr', {},
             h('td', {}, r),
-            h('td', {}, h('button', { class: 'danger', onclick: async () => {
+            h('td', {}, h('button', { type: 'button', class: 'danger', onclick: async () => {
               const ok = await sensitive(`HAPUS SITUS ${r}?`, code => api('sites/remove', 'POST', { repo: r, totp: code }));
               if (ok) render();
             } }, 'Hapus'))))));
@@ -1313,21 +1517,21 @@ async function renderSites() {
 
   // GitHub Personal Access Token Card (Menaikkan kuota dari 60 ke 5000 req/jam)
   const tokenInput = h('input', { type: 'password', placeholder: 'ghp_xxxxxxxxxxxx atau github_pat_xxxxxxxx', style: 'flex:1;' });
-  const saveTokenBtn = h('button', { class: 'good', onclick: async () => {
+  const saveTokenBtn = h('button', { type: 'button', class: 'good', onclick: async () => {
     const val = tokenInput.value.trim();
     const ok = await sensitive(
       val ? 'SIMPAN GITHUB TOKEN?\n(Menaikkan limit API ke 5000 req/jam)' : 'HAPUS GITHUB TOKEN?',
       code => api('sites/token', 'POST', { token: val, totp: code })
     );
     if (ok) {
-      toast('Token GitHub berhasil diperbarui!');
+      toast('Token GitHub berhasil diperbarui');
       tokenInput.value = '';
     }
-  } }, 'SIMPAN TOKEN');
+  } }, 'Simpan Token');
 
   const tokenCard = h('div', { class: 'card', style: 'margin-bottom:16px;' },
-    h('h3', {}, '🔑 GITHUB PERSONAL ACCESS TOKEN (OPSIONAL)'),
-    h('p', { class: 'dim', style: 'font-size:11px;' }, 'Bila terkena batas GitHub (HTTP 403), masukkan token GitHub publik (read-only) untuk menaikkan kuota menjadi 5.000 req/jam. Kosongkan & simpan jika ingin menghapus.'),
+    h('h3', {}, 'GITHUB PERSONAL ACCESS TOKEN (OPSIONAL)'),
+    h('p', { class: 'dim' }, 'Bila terkena batas GitHub (HTTP 403), masukkan token GitHub publik (read-only) untuk menaikkan kuota menjadi 5.000 req/jam. Kosongkan dan simpan jika ingin menghapus.'),
     h('div', { class: 'row', style: 'gap:8px;' }, tokenInput, saveTokenBtn)
   );
 
@@ -2228,13 +2432,18 @@ async function render() {
         const c = localStorage.getItem('mm-apps'); if (!c || !csrf) throw e;
         d = JSON.parse(c); $('#offline').hidden = false;
       }
+      const updateCount = d.apps.filter(a => a.installed && a.update_available).length;
+      const navAppsBtn = $('#nav-apps-btn');
+      if (navAppsBtn) {
+        navAppsBtn.replaceChildren('APPS', updateCount > 0 ? h('span', { class: 'nav-badge', title: `${updateCount} aplikasi punya pembaruan` }, String(updateCount)) : null);
+      }
       const list = d.apps.filter(a => tab === 'apps' ? a.installed : !a.installed);
       const out = [await sysbar()];
-      if (tab === 'apps') out.push(h('div', { class: 'row' }, h('button', { class: d.lockdown ? 'good' : 'danger', onclick: () => sensitive(d.lockdown ? 'Matikan lockdown?' : 'LOCKDOWN: hentikan semua app non-kritis?', c => api('lockdown', 'POST', { on: !d.lockdown, totp: c })).then(render) }, d.lockdown ? 'Akhiri lockdown' : 'Lockdown')));
-      out.push(h('h2', {}, tab === 'apps' ? 'APLIKASI TERPASANG' : 'TERSEDIA'));
-      out.push(list.length ? h('div', { class: 'grid' }, list.map(appCard)) : h('p', { class: 'loading' }, tab === 'apps' ? 'Belum ada aplikasi.' : 'Tidak ada yang baru.'));
+      if (tab === 'apps') out.push(h('div', { class: 'row' }, h('button', { type: 'button', class: d.lockdown ? 'good' : 'danger', onclick: () => sensitive(d.lockdown ? 'Matikan lockdown?' : 'LOCKDOWN: hentikan semua app non-kritis?', c => api('lockdown', 'POST', { on: !d.lockdown, totp: c })).then(render) }, d.lockdown ? 'Akhiri lockdown' : 'Lockdown')));
+      out.push(h('h2', {}, tab === 'apps' ? 'APLIKASI TERPASANG' : 'KATALOG TERSEDIA'));
+      out.push(list.length ? h('div', { class: 'grid' }, list.map(appCard)) : h('div', { class: 'card' }, h('p', { class: 'dim', style: 'margin:0;' }, tab === 'apps' ? 'Belum ada aplikasi terpasang. Buka tab KATALOG atau SITUS untuk memasang aplikasi pertama Anda.' : 'Semua aplikasi dari katalog sudah terpasang, atau tekan Pindai Ulang untuk memeriksa rilis terbaru.')));
       if (tab === 'catalog') {
-        out.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: async () => { toast('Memindai GitHub...'); await api('refresh', 'POST').catch(e => toast(e.message)); render(); } }, 'Pindai ulang')));
+        out.push(h('div', { class: 'row', style: 'margin-top:12px;' }, h('button', { type: 'button', class: 'ghost', onclick: async () => { toast('Memindai GitHub...'); await api('refresh', 'POST').catch(e => toast(e.message)); render(); } }, 'Pindai Ulang Katalog')));
         if (d.unconfigured.length) out.push(h('h2', {}, 'REPO LAINNYA (TANPA BINARY ARM64)'), h('table', {}, d.unconfigured.map(u => h('tr', {}, h('td', {}, u.repo), h('td', {}, u.reason)))));
       }
       view.replaceChildren(...out.filter(Boolean));

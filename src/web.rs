@@ -265,6 +265,13 @@ pub(crate) fn port_in_use(port: u16) -> bool {
     false
 }
 
+/// Finds a free TCP port in [start..=end] not currently bound and not in `reserved`.
+pub(crate) fn find_free_port(start: u16, end: u16, reserved: &[u16]) -> Option<u16> {
+    (start..=end).find(|&p| {
+        p != 8443 && !reserved.contains(&p) && !port_in_use(p) && std::net::TcpListener::bind(("0.0.0.0", p)).is_ok()
+    })
+}
+
 fn cgroup_mem_mb(id: &str) -> Option<u64> {
     for p in [
         format!("/sys/fs/cgroup/system.slice/mastermind-{id}.service/memory.current"),
@@ -312,17 +319,43 @@ fn apps_json(app: &App, force: bool) -> Value {
         let effective_mem = inst.map(|i| if i.memory_max_mb > 0 { i.memory_max_mb } else { e.memory_max_mb }).unwrap_or(e.memory_max_mb);
         let effective_cpu = inst.map(|i| if i.cpu_quota_pct > 0 { i.cpu_quota_pct } else { e.cpu_quota_pct }).unwrap_or(e.cpu_quota_pct);
         let autostart = inst.map(|i| i.autostart).unwrap_or(true);
-        out.push(json!({"id": e.id, "repo": e.repo, "version": e.version, "description": e.description, "priority": inst.map(|i| i.priority).unwrap_or(e.priority), "port": effective_port,
-            "memory_max_mb": effective_mem, "cpu_quota_pct": effective_cpu, "language": e.language, "autostart": autostart,
-            "installed": inst, "status": status, "verified": verified, "update_available": inst.map(|i| i.version != e.version).unwrap_or(false),
-            "port_busy": inst.is_none() && port_in_use(e.port), "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id)), "cpu_pct": inst.and_then(|_| cgroup_cpu_pct(&e.id))}));
+        let update_available = inst.map(|i| {
+            normalize_version_tag(&i.version) != normalize_version_tag(&e.version)
+        }).unwrap_or(false);
+        let has_rollback = inst.map(|i| {
+            i.prev_version.is_some() || std::path::Path::new(&app.cfg.apps_dir).join(&e.id).join("bin.prev").exists()
+        }).unwrap_or(false);
+        out.push(json!({
+            "id": e.id, "repo": e.repo, "version": e.version, "latest_version": e.version,
+            "description": e.description, "priority": inst.map(|i| i.priority).unwrap_or(e.priority),
+            "port": effective_port, "internal_port": inst.and_then(|i| i.internal_port),
+            "memory_max_mb": effective_mem, "cpu_quota_pct": effective_cpu,
+            "language": inst.map(|i| i.language.as_str()).unwrap_or(&e.language),
+            "autostart": autostart, "installed": inst, "status": status, "verified": verified,
+            "update_available": update_available, "has_rollback": has_rollback,
+            "warnings": inst.map(|i| i.warnings.clone()).unwrap_or_default(),
+            "sandbox_tools": inst.map(|i| i.sandbox_tools.clone()).unwrap_or_default(),
+            "folder_paths": inst.map(|i| i.folder_paths.clone()).unwrap_or_default(),
+            "port_busy": inst.is_none() && port_in_use(e.port),
+            "mem_mb": inst.and_then(|_| cgroup_mem_mb(&e.id)),
+            "cpu_pct": inst.and_then(|_| cgroup_cpu_pct(&e.id))
+        }));
     }
     for (id, i) in &st.apps {
         if entries.iter().any(|e| &e.id == id) { continue; }
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
         let effective_port = if i.port > 0 { i.port } else { crate::localscan::default_app_port(id).unwrap_or(0) };
-        out.push(json!({"id": id, "repo": i.repo, "version": i.version, "description": "(aplikasi terkelola)", "priority": i.priority, "port": effective_port,
-            "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct, "language": "?", "autostart": i.autostart, "installed": i, "status": status, "verified": i.verified, "update_available": false, "mem_mb": cgroup_mem_mb(id), "cpu_pct": cgroup_cpu_pct(id)}));
+        let has_rollback = i.prev_version.is_some() || std::path::Path::new(&app.cfg.apps_dir).join(id).join("bin.prev").exists();
+        out.push(json!({
+            "id": id, "repo": i.repo, "version": i.version, "latest_version": i.version,
+            "description": "(aplikasi terkelola)", "priority": i.priority,
+            "port": effective_port, "internal_port": i.internal_port,
+            "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct,
+            "language": i.language, "autostart": i.autostart, "installed": i, "status": status,
+            "verified": i.verified, "update_available": false, "has_rollback": has_rollback,
+            "warnings": i.warnings, "sandbox_tools": i.sandbox_tools, "folder_paths": i.folder_paths,
+            "mem_mb": cgroup_mem_mb(id), "cpu_pct": cgroup_cpu_pct(id)
+        }));
     }
     json!({"apps": out, "unconfigured": bad, "lockdown": st.lockdown})
 }
@@ -498,6 +531,12 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     envs: vec![],
                     extra_args: vec![],
                     is_external: true,
+                    prev_version: None,
+                    warnings: vec![],
+                    language: "external".into(),
+                    sandbox_tools: vec![],
+                    folder_paths: vec![],
+                    internal_port: None,
                 });
                 s.log("admin", &format!("import-app {name} (port {port})"));
                 s.save().ok();
@@ -682,6 +721,68 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     Err(er) => { logger(&format!("[ERROR] Gagal: {er}")); err(422, &er) }
                 }
             }
+            (Method::Post, ["apps", "adaptive-install"]) => {
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
+                let repo = match discover::parse_repo(b["repo"].as_str().unwrap_or("")) {
+                    Ok(r) => r,
+                    Err(e) => return err(400, &e),
+                };
+                let toml_str = b["batasan_toml"].as_str().unwrap_or("").trim().to_string();
+                let asset_url = b["asset_url"].as_str().unwrap_or("").trim().to_string();
+                let version = b["version"].as_str().unwrap_or("adaptive").trim().to_string();
+                if toml_str.is_empty() || asset_url.is_empty() {
+                    return err(400, "batasan_toml dan asset_url wajib diisi");
+                }
+                let parsed = match crate::batasan::Batasan::parse(&toml_str) {
+                    Ok(p) => p,
+                    Err(e) => return err(400, &format!("Aturan batasan tidak valid: {e}")),
+                };
+                let id = parsed.app.id.clone();
+                if !ipc::valid_id(&id) { return err(400, "bad id"); }
+                let entry = discover::Entry {
+                    id: id.clone(),
+                    repo: repo.clone(),
+                    version,
+                    description: parsed.app.description.clone().unwrap_or_else(|| format!("Adaptive webapp ({})", parsed.app.language)),
+                    priority: parsed.run.priority,
+                    port: parsed.run.port,
+                    memory_max_mb: parsed.limits.memory_max_mb,
+                    cpu_quota_pct: parsed.limits.cpu_quota_pct,
+                    language: parsed.app.language.clone(),
+                    asset_url,
+                    checksum_url: None,
+                    pin: None,
+                    batasan_toml: toml_str,
+                    batasan: Some(parsed),
+                };
+                let app_clone = Arc::clone(app);
+                let id_clone = id.clone();
+                {
+                    let mut logs = app.install_logs.lock().unwrap();
+                    logs.insert(id.clone(), vec![format!("[*] Memulai instalasi adaptif {} ({})...", id, entry.language)]);
+                }
+                let logger = move |msg: &str| {
+                    if let Ok(mut logs) = app_clone.install_logs.lock() {
+                        logs.entry(id_clone.clone()).or_default().push(msg.to_string());
+                    }
+                };
+                match installer::install_with_logger(&app.cfg, &app.store, &entry, &logger) {
+                    Ok(m) => { logger(&format!("[SUCCESS] {m}")); json_resp(200, json!({"message": m, "id": id})) }
+                    Err(er) => { logger(&format!("[ERROR] Gagal: {er}")); err(422, &er) }
+                }
+            }
+            (Method::Post, ["apps", id, "rollback"]) => {
+                if !ipc::valid_id(id) { return err(400, "bad id"); }
+                let b = read_json(&mut req);
+                let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
+                if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
+                match installer::rollback(&app.cfg, &app.store, id) {
+                    Ok(m) => json_resp(200, json!({"ok": true, "message": format!("Rollback {id} berhasil ({m})")})),
+                    Err(e) => err(422, &e),
+                }
+            }
             (Method::Post, ["sites", "inspect"]) => {
                 let b = read_json(&mut req);
                 let input = b["repo"].as_str().unwrap_or("");
@@ -694,8 +795,57 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     if !tok.trim().is_empty() { cfg.github_token = Some(tok.trim().to_string()); }
                 }
                 match discover::inspect_repo(&cfg, &repo) {
-                    Ok(e) => json_resp(200, json!({"ok": true, "entry": e})),
-                    Err(e) => json_resp(200, json!({"ok": false, "repo": repo, "reason": e})),
+                    Ok(e) => json_resp(200, json!({"ok": true, "adaptive": false, "entry": e})),
+                    Err(reason) => {
+                        // Adaptive WebApp fallback: inspect repo files even without .batasan.toml
+                        let texts = crate::adapt::fetch_legacy(&repo);
+                        let findings = crate::adapt::analyze(&texts);
+                        let name = repo.split('/').nth(1).unwrap_or("app");
+                        let id: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+                        let desired_port = findings.port.unwrap_or(8080);
+                        let reserved: Vec<u16> = app.store.lock().unwrap().state.apps.values().map(|a| a.port).collect();
+                        let port_conflict = port_in_use(desired_port) || reserved.contains(&desired_port);
+                        let suggested_port = if port_conflict {
+                            find_free_port(10000, 19999, &reserved).unwrap_or(desired_port)
+                        } else {
+                            desired_port
+                        };
+                        let mem_mb = match findings.language.as_str() {
+                            "node" | "python" => 192,
+                            "static" => 64,
+                            _ => 128,
+                        };
+                        let asset_name = match findings.language.as_str() {
+                            "static" => findings.entry.clone().unwrap_or_else(|| "index.html".into()),
+                            "node" => findings.entry.clone().unwrap_or_else(|| "index.js".into()),
+                            "python" => findings.entry.clone().unwrap_or_else(|| "app.py".into()),
+                            _ => format!("{id}-linux-arm64"),
+                        };
+                        let asset_url = match findings.language.as_str() {
+                            "static" | "node" | "python" => format!("https://raw.githubusercontent.com/{repo}/HEAD/{asset_name}"),
+                            _ => format!("https://github.com/{repo}/releases/latest/download/{asset_name}"),
+                        };
+                        let draft_toml = crate::adapt::draft(&repo, &findings, suggested_port, mem_mb, &asset_name).unwrap_or_default();
+                        let mut warnings = vec![format!("Mode Adaptif aktif: {reason}")];
+                        warnings.push("Tidak memiliki checksums.txt resmi (Hard Gate Malware & Antivirus tetap wajib lolos)".into());
+                        if port_conflict {
+                            warnings.push(format!("Port default {desired_port} terpakai, otomatis dialihkan ke port bebas {suggested_port}"));
+                        }
+                        json_resp(200, json!({
+                            "ok": true,
+                            "adaptive": true,
+                            "repo": repo,
+                            "id": id,
+                            "reason": reason,
+                            "findings": findings,
+                            "desired_port": desired_port,
+                            "suggested_port": suggested_port,
+                            "port_conflict": port_conflict,
+                            "asset_url": asset_url,
+                            "draft_toml": draft_toml,
+                            "warnings": warnings
+                        }))
+                    }
                 }
             }
             (Method::Post, ["sites", "token"]) => {

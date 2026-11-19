@@ -1,145 +1,131 @@
-@font-face{font-family:"PS2P";src:url(/pixel.ttf) format("truetype");font-display:swap}
-
-/* ==========================================================================
-   PALET TEMA JEPANG ALAMI & MENENANGKAN (Zen Garden, Forest, Sakura, Onsen)
-   ========================================================================== */
-:root, [data-theme="matcha"] {
-  --bg: #151d18;          /* Hutan cemara malam yang tenang */
-  --bg-card: #1f2b23;     /* Lumut hijau gelap */
-  --panel: #27372d;       /* Daun matcha pekat */
-  --panel2: #34473b;      /* Batang kayu basah */
-  --ink: #eaf3eb;         /* Kertas washi putih lembut */
-  --dim: #9ab3a0;         /* Hijau kabut */
-  --accent: #8ac275;      /* Tunas bambu muda */
-  --accent-soft: #b6e2a6; /* Pucuk teh hijau */
-  --highlight: #e8d089;   /* Sinar matahari pagi */
-  --warm: #d99166;        /* Tembikar tanah liat */
-  --danger: #c45b5b;      /* Bunga camellia merah */
-  --danger-soft: #f48b8b;
-  --good: #63a863;        /* Bambu segar */
-  --border: #3b5243;
-  --shadow: #0b110e;
+/* Studio Ghibli Watercolor Dual-Mode Palette (Day: Totoro/Kiki, Night: Spirited Away Lantern) */
+:root, [data-mode="day"] {
+  --bg: #f4ede0;
+  --bg-card: #fffbf2;
+  --panel: #efe5d1;
+  --panel2: #e4d6bb;
+  --ink: #2a2118;
+  --dim: #5c4e3f;
+  --accent: #2d6a4f;
+  --accent-ink: #ffffff;
+  --accent-soft: #dff0e6;
+  --highlight: #9c5a18;
+  --warm: #b5502a;
+  --danger: #a83232;
+  --danger-soft: #fde8e8;
+  --good: #256847;
+  --warn: #9a5b13;
+  --border: #d5c6ab;
+  --shadow: rgba(58, 43, 28, 0.14);
 }
 
-[data-theme="sakura"] {
-  --bg: #1c181d;          /* Senja yozakura */
-  --bg-card: #272028;     /* Kayu gelap kuil Kyoto */
-  --panel: #362c38;       /* Daun plum senja */
-  --panel2: #483a4b;      /* Bayangan lentera */
-  --ink: #f7eff6;         /* Kelopak sakura terang */
-  --dim: #ba9ebb;         /* Abu-abu lembayung */
-  --accent: #e28fae;      /* Bunga sakura mekar */
-  --accent-soft: #f8c3d5; /* Merah muda lembut */
-  --highlight: #f0dc99;   /* Cahaya lilin kuil */
-  --warm: #d98877;        /* Payung kertas wagasa */
-  --danger: #bd4865;      /* Anggur merah */
-  --danger-soft: #f0829d;
-  --good: #669e77;        /* Ranting hijau */
-  --border: #523f56;
-  --shadow: #120e13;
+[data-mode="night"] {
+  --bg: #141923;
+  --bg-card: #1e2534;
+  --panel: #273044;
+  --panel2: #313c54;
+  --ink: #f3ead8;
+  --dim: #b8ad99;
+  --accent: #e09a36;
+  --accent-ink: #1a1309;
+  --accent-soft: #3a2f1f;
+  --highlight: #f2c879;
+  --warm: #d97c54;
+  --danger: #e06c75;
+  --danger-soft: #3d2126;
+  --good: #52b788;
+  --warn: #e5a93c;
+  --border: #3a465f;
+  --shadow: rgba(6, 9, 15, 0.48);
 }
 
-[data-theme="bamboo"] {
-  --bg: #181c19;          /* Hutan bambu berembun Arashiyama */
-  --bg-card: #222924;     /* Bambu tua */
-  --panel: #2b362f;       /* Halaman kuil batu */
-  --panel2: #38463c;      /* Lumut batu sungai */
-  --ink: #f2f7f3;         /* Kabut pagi */
-  --dim: #9eb5a5;         /* Bayangan bambu */
-  --accent: #92d492;      /* Bambu air segar */
-  --accent-soft: #c8f5c8; /* Pucuk bambu */
-  --highlight: #d4cf8a;   /* Jerami tatami */
-  --warm: #cca076;        /* Kayu hinoki */
-  --danger: #bd5959;      /* Daun maple merah */
-  --danger-soft: #ef8b8b;
-  --good: #5cb377;        /* Daun teratai */
-  --border: #44584b;
-  --shadow: #0d110e;
+/* Subtle seasonal accent harmonies (always preserving WCAG AA contrast) */
+[data-mode="day"][data-season="ramadhan"] { --accent: #8c6216; --highlight: #7a4e10; --border: #d9c89e; }
+[data-mode="day"][data-season="merdeka"]  { --accent: #a62626; --highlight: #8f1d1d; --border: #dfc2bc; }
+[data-mode="day"][data-season="hujan"]    { --accent: #2a5f7a; --highlight: #214e66; --border: #c1d0d9; }
+[data-mode="day"][data-season="sakura"]   { --accent: #9c3d62; --highlight: #873153; --border: #e3c8d2; }
+[data-mode="day"][data-season="autumn"]   { --accent: #a84922; --highlight: #8c3a19; --border: #dfc3ad; }
+[data-mode="day"][data-season="winter"]   { --accent: #2b5b84; --highlight: #21496b; --border: #c2d4e3; }
+
+[data-mode="night"][data-season="ramadhan"] { --accent: #eab349; --highlight: #f5d287; }
+[data-mode="night"][data-season="merdeka"]  { --accent: #e86868; --accent-ink: #1a0b0b; --highlight: #f5a3a3; }
+[data-mode="night"][data-season="hujan"]    { --accent: #74b9e6; --accent-ink: #0a1824; --highlight: #a8d5f2; }
+[data-mode="night"][data-season="sakura"]   { --accent: #eba0bc; --accent-ink: #240d17; --highlight: #f7c7da; }
+[data-mode="night"][data-season="autumn"]   { --accent: #e88e52; --accent-ink: #211005; --highlight: #f5ba8c; }
+[data-mode="night"][data-season="winter"]   { --accent: #8cc4eb; --accent-ink: #0a1824; --highlight: #bfe0f7; }
+
+* { box-sizing: border-box; }
+
+html {
+  font-size: 15px;
+  scroll-behavior: smooth;
 }
 
-[data-theme="onsen"] {
-  --bg: #151b22;          /* Kolam air panas alam malam hari */
-  --bg-card: #1c2530;     /* Batu kali hitam basah */
-  --panel: #263445;       /* Uap mineral biru */
-  --panel2: #33445a;      /* Batuan slate */
-  --ink: #edf4fa;         /* Busa air hangat */
-  --dim: #94acc5;         /* Kabut pemandian */
-  --accent: #78b8e6;      /* Air mineral hangat */
-  --accent-soft: #b0daf8; /* Refleksi langit di air */
-  --highlight: #e8d28a;   /* Ember kayu onsen */
-  --warm: #d69772;        /* Kayu cedar panas */
-  --danger: #bf566c;      /* Kain penutup merah */
-  --danger-soft: #f08b9f;
-  --good: #57a688;        /* Lumut tepi kolam */
-  --border: #3b516b;
-  --shadow: #0a0f14;
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Nunito", "Quicksand", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 40px env(safe-area-inset-left);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-[data-theme="slamet"] {
-  --bg: #16201b;          /* Fajar lereng Gunung Slamet */
-  --bg-card: #202e26;     /* Tanah subur perkebunan teh */
-  --panel: #2d3e33;       /* Perkebunan teh Kaligua */
-  --panel2: #3d5445;      /* Daun teh basah */
-  --ink: #fdfaf2;         /* Kabut fajar cerah */
-  --dim: #a5bfae;         /* Siluet pegunungan */
-  --accent: #f2ba63;      /* Sinar fajar keemasan Slamet */
-  --accent-soft: #f9d89c; /* Cahaya pagi */
-  --highlight: #f8cf74;   /* Emas fajar */
-  --warm: #d97843;        /* Tanah merah bawang Brebes */
-  --danger: #c44f4f;      /* Bunga liar merah */
-  --danger-soft: #f58484;
-  --good: #6dbd72;        /* Ladang hijau */
-  --border: #476352;
-  --shadow: #0c120f;
+/* Canvas latar watercolor Ghibli */
+#zen-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
 }
 
-*{box-sizing:border-box}
-html{image-rendering:pixelated}
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--ink);
-  font:10px/1.9 "PS2P",monospace;
-  min-height:100vh;
-  padding:env(safe-area-inset-top) env(safe-area-inset-right) 40px env(safe-area-inset-left);
-  transition:background .3s steps(6), color .3s steps(6);
-}
-
-/* Canvas Latar Bergambar & Beranimasi Realtime */
-#zen-canvas{
-  position:fixed;
-  inset:0;
-  width:100vw;
-  height:100vh;
-  z-index:-1;
-  pointer-events:none;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Header & Navigasi */
-.top{
-  display:flex;
-  flex-wrap:wrap;
-  gap:14px;
-  align-items:center;
-  justify-content:space-between;
-  padding:14px 18px;
-  border-bottom:4px solid var(--border);
-  background:var(--bg-card);
-  box-shadow:0 4px 0 var(--shadow);
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 2px 10px var(--shadow);
+  position: sticky;
+  top: 0;
+  z-index: 40;
 }
-.logo{display:flex;align-items:center;gap:14px}
-.brand h1{
-  font-size:13px;
-  margin:0;
-  color:var(--highlight);
-  text-shadow:2px 2px 0 var(--shadow);
-  letter-spacing:1px;
+
+.logo { display: flex; align-items: center; gap: 12px; }
+.brand h1 {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0;
+  color: var(--ink);
+  letter-spacing: 0.4px;
 }
-.sub-zen{
-  font-size:7px;
-  color:var(--accent);
-  display:block;
-  margin-top:2px;
+.sub-zen {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  display: block;
+  margin-top: 1px;
 }
 
 /* Maskot Shell Bumiayu Interaktif (Eye-Tracking + Slamet / Tea Sprout) */
@@ -947,5 +933,321 @@ button, input, select, textarea, a {
   color: var(--danger);
   border: 1px solid rgba(229, 62, 62, 0.35);
 }
+
+/* Studio Ghibli Watercolor Craft & Antislop Accessibility Locks (R-03, R-25, R-32, R-39) */
+a[href], button, summary, select, label[for], input[type="checkbox"], input[type="radio"], [role="button"], [role="tab"] {
+  cursor: pointer;
+}
+button:disabled, input:disabled, select:disabled, textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button, .btn, select, input, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+button.kodama-mascot {
+  background: transparent;
+  border: 0;
+  padding: 2px;
+  box-shadow: none;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px var(--shadow);
+  padding: 16px 18px;
+}
+
+.card h3, .card h4 {
+  color: var(--ink);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+button, .btn {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  min-height: 38px;
+  font-weight: 700;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+  box-shadow: none;
+}
+
+button:hover:not(:disabled), .btn:hover {
+  background: var(--panel2);
+  border-color: var(--accent);
+}
+
+button:active:not(:disabled), .btn:active {
+  transform: translateY(1px);
+}
+
+button.good, .btn.good {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+button.good:hover:not(:disabled), .btn.good:hover {
+  filter: brightness(1.06);
+}
+
+button.danger, .btn.danger {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+
+button.ghost, .btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+button.ghost:hover:not(:disabled), .btn.ghost:hover {
+  background: var(--panel);
+}
+
+nav#nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+nav#nav button {
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+nav#nav button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--warm);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mode-toggle-btn, .season-pill-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.theme-select-wrapper {
+  display: inline-flex;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 6px;
+}
+
+.theme-select-wrapper select {
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  padding: 7px 4px;
+  min-height: 36px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.theme-select-wrapper select option {
+  background: var(--bg-card);
+  color: var(--ink);
+}
+
+.fps-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--border);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--warm);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.sandbox-pill {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+}
+
+.warn-list-box {
+  background: var(--panel);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.warn-list-box ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+}
+
+.adaptive-plan-box {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+
+.folder-perm-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.folder-perm-box label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+
+dialog {
+  background: var(--bg-card);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 14px 40px var(--shadow);
+  padding: 20px;
+  max-width: 560px;
+  width: calc(100vw - 24px);
+}
+
+dialog::backdrop {
+  background: rgba(15, 18, 26, 0.55);
+}
+
+.season-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.season-cal-item {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.season-cal-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.season-cal-item small {
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.site-footer {
+  max-width: 1240px;
+  margin: 28px auto 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+@media (max-width: 640px) {
+  .top { padding: 10px 12px; }
+  button, .btn, select, nav#nav button {
+    min-height: 44px;
+  }
+  .header-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 
 

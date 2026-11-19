@@ -12,27 +12,66 @@ pub fn unit(b: &Batasan, bin_path: &str) -> String {
     let mut ro = String::new();
     for path in &b.permissions.paths_ro { ro.push_str(&format!("BindReadOnlyPaths={path}\n")); }
     let jail = format!("/var/lib/mastermind/{id}");
+    let app_dir = std::path::Path::new(bin_path).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| jail.clone());
+    let sandbox_dir = format!("{app_dir}/sandbox");
+    let sandbox_bin = format!("{sandbox_dir}/bin");
+    let sandbox_lib = format!("{sandbox_dir}/lib");
+
     let mut sys = String::new();
     for d in ["/usr/lib", "/lib", "/etc/ssl", "/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/usr/share/zoneinfo", "/bin/sh"] {
         sys.push_str(&format!("BindReadOnlyPaths=-{d}\n"));
     }
+    if b.permissions.sandbox_tools || !b.permissions.tools.is_empty() {
+        sys.push_str(&format!("BindReadOnlyPaths=-{sandbox_dir}\n"));
+    }
     for t in &b.permissions.tools {
         sys.push_str(&format!("BindReadOnlyPaths=-/usr/bin/{t}\n"));
     }
+
     let mut full_args = Vec::new();
-    if !b.run.args.iter().any(|a| a.starts_with("-port") || a.starts_with("--port")) {
-        full_args.push(format!("-port {}", b.run.port));
-    }
-    for a in &b.run.args {
-        full_args.push(a.clone());
-    }
-    let exec_cmd = if full_args.is_empty() {
-        bin_path.to_string()
-    } else {
-        format!("{bin_path} {}", full_args.join(" "))
+    let exec_cmd = match b.app.language.as_str() {
+        "static" => {
+            let mm_bin = std::env::current_exe()
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+                .filter(|p| p.starts_with("/usr/"))
+                .unwrap_or_else(|| "/usr/local/bin/mastermind".into());
+            format!("{mm_bin} serve-static {app_dir} {}", b.run.port)
+        }
+        "node" => {
+            let entry = b.run.entry.as_deref().unwrap_or("index.js");
+            let mut cmd = format!("/usr/bin/env node {app_dir}/{entry}");
+            for a in &b.run.args {
+                cmd.push(' ');
+                cmd.push_str(a);
+            }
+            cmd
+        }
+        "python" => {
+            let entry = b.run.entry.as_deref().unwrap_or("app.py");
+            let mut cmd = format!("/usr/bin/env python3 {app_dir}/{entry}");
+            for a in &b.run.args {
+                cmd.push(' ');
+                cmd.push_str(a);
+            }
+            cmd
+        }
+        _ => {
+            if !b.run.args.iter().any(|a| a.starts_with("-port") || a.starts_with("--port")) {
+                full_args.push(format!("-port {}", b.run.port));
+            }
+            for a in &b.run.args {
+                full_args.push(a.clone());
+            }
+            if full_args.is_empty() {
+                bin_path.to_string()
+            } else {
+                format!("{bin_path} {}", full_args.join(" "))
+            }
+        }
     };
+
     let net = if b.permissions.outbound.is_empty() { "IPAddressDeny=any\nIPAddressAllow=localhost\nIPAddressAllow=link-local\nIPAddressAllow=10.0.0.0/8\nIPAddressAllow=172.16.0.0/12\nIPAddressAllow=192.168.0.0/16\nIPAddressAllow=100.64.0.0/10\n" } else { "" };
-    let app_dir = std::path::Path::new(bin_path).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| jail.clone());
     format!(
 "[Unit]
 Description=Mastermind app: {id} ({repo})
@@ -41,6 +80,8 @@ After=network.target
 [Service]
 ExecStart={exec_cmd}
 Environment=PORT={port}
+Environment=PATH={sandbox_bin}:/usr/local/bin:/usr/bin:/bin
+Environment=LD_LIBRARY_PATH={sandbox_lib}
 DynamicUser=yes
 StateDirectory=mastermind/{id}
 WorkingDirectory={app_dir}

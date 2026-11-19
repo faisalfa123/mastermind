@@ -1,12 +1,4 @@
-/* ==========================================================================
-   MASTERMIND LIVING ZEN SCENE ENGINE
-   Canvas 12-24 FPS Adaptive Animated Backgrounds with cursor physics:
-   - Matcha Forest: layered fir trees, Kaligua tea leaves drifting, fireflies
-   - Sakura Dusk: Torii shrine silhouette, twilight sky, falling cherry blossoms
-   - Bamboo Mist: swaying bamboo stalks, rolling fog layers, morning dew
-   - Onsen Slate: volcanic hot spring rockpool, pulsing steam vapors, ripple water
-   - Slamet Dawn: Mount Slamet sunrise, onion farm terrace, morning breeze
-   ========================================================================== */
+/* Studio Ghibli Watercolor & Seasonal Scene Engine (Fixed 24 FPS for Odroid C2) */
 'use strict';
 
 (function () {
@@ -15,22 +7,28 @@
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  let width = 0, height = 0;
-  let mouseX = -1000, mouseY = -1000;
-  let targetMouseX = -1000, targetMouseY = -1000;
-  let currentTheme = document.documentElement.dataset.theme || 'matcha';
-  let animMode = localStorage.getItem('mm-anim') || 'full'; // 'full' | 'eco' | 'off'
+  let width = 0;
+  let height = 0;
+  let mouseX = -1000;
+  let mouseY = -1000;
+  let targetMouseX = -1000;
+  let targetMouseY = -1000;
+  let currentMode = document.documentElement.dataset.mode || 'day';
+  let currentSeason = document.documentElement.dataset.season || 'kemarau';
+  let animMode = localStorage.getItem('mm-anim') || 'full';
   let isVisible = true;
-  let lastTime = performance.now();
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reducedMotion) animMode = 'off';
 
-  // Particle storage
   const particles = [];
-  const ripplers = [];
+  const clouds = [];
 
   function resize() {
     width = canvas.width = window.innerWidth;
     height = canvas.height = window.innerHeight;
-    initThemeParticles();
+    initClouds();
+    initParticles();
+    drawFrame(performance.now());
   }
 
   window.addEventListener('resize', resize, { passive: true });
@@ -41,205 +39,165 @@
   window.addEventListener('mousemove', e => {
     targetMouseX = e.clientX;
     targetMouseY = e.clientY;
-    if (Math.random() < 0.15 && currentTheme === 'onsen') {
-      ripplers.push({ x: e.clientX, y: e.clientY, r: 2, maxR: 40 + Math.random() * 30, a: 0.6 });
-    }
   }, { passive: true });
 
-  function initThemeParticles() {
+  function initClouds() {
+    clouds.length = 0;
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      clouds.push({
+        x: (width / count) * i + Math.random() * 120,
+        y: height * (0.08 + Math.random() * 0.24),
+        scale: 0.7 + Math.random() * 0.9,
+        speed: 0.12 + Math.random() * 0.18
+      });
+    }
+  }
+
+  function initParticles() {
     particles.length = 0;
     if (animMode === 'off') return;
-
-    const count = animMode === 'eco' ? 22 : 55;
+    const baseCount = currentSeason === 'hujan' ? 56 : 36;
+    const count = animMode === 'eco' ? Math.round(baseCount * 0.45) : baseCount;
     for (let i = 0; i < count; i++) {
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.8,
-        vy: 0.4 + Math.random() * 1.2,
+        vx: currentSeason === 'hujan' ? -1.4 : (Math.random() - 0.5) * 0.65,
+        vy: currentSeason === 'hujan' ? (5 + Math.random() * 4) : (currentSeason === 'summer' || currentSeason === 'ramadhan' || currentSeason === 'merdeka' ? -(0.25 + Math.random() * 0.5) : (0.35 + Math.random() * 0.85)),
         size: 3 + Math.random() * 5,
         rot: Math.random() * Math.PI * 2,
-        vrot: (Math.random() - 0.5) * 0.05,
-        alpha: 0.3 + Math.random() * 0.6,
+        vrot: (Math.random() - 0.5) * 0.035,
+        alpha: 0.35 + Math.random() * 0.5,
         phase: Math.random() * 10
       });
     }
   }
 
-  // Draw scene layers per theme
-  function drawBackground() {
-    ctx.clearRect(0, 0, width, height);
-    if (animMode === 'off') return;
-
-    // Smooth cursor interpolation
-    mouseX += (targetMouseX - mouseX) * 0.1;
-    mouseY += (targetMouseY - mouseY) * 0.1;
-
-    const parallaxX = (mouseX / (width || 1) - 0.5) * 20;
-
-    if (currentTheme === 'sakura') {
-      drawSakuraScene(parallaxX);
-    } else if (currentTheme === 'bamboo') {
-      drawBambooScene(parallaxX);
-    } else if (currentTheme === 'onsen') {
-      drawOnsenScene(parallaxX);
-    } else if (currentTheme === 'slamet') {
-      drawSlametDawnScene(parallaxX);
-    } else {
-      drawMatchaScene(parallaxX);
-    }
-
-    drawParticles();
-  }
-
-  // 1. MATCHA FOREST (Hutan Cemara & Daun Teh Kaligua)
-  function drawMatchaScene(px) {
-    // Distant mountain ridge (Mount Slamet silhouette)
-    ctx.fillStyle = 'rgba(23, 35, 27, 0.45)';
-    ctx.beginPath();
-    ctx.moveTo(0, height);
-    ctx.lineTo(0, height * 0.65);
-    ctx.lineTo(width * 0.45 + px * 0.5, height * 0.45);
-    ctx.lineTo(width * 0.65 + px * 0.5, height * 0.55);
-    ctx.lineTo(width, height * 0.62);
-    ctx.lineTo(width, height);
-    ctx.fill();
-
-    // Midground pine tree layer
-    ctx.fillStyle = 'rgba(28, 44, 33, 0.5)';
-    const step = 65;
-    for (let x = -30; x < width + 60; x += step) {
-      const treeH = 90 + Math.sin(x * 12.3) * 35;
-      const baseX = x + px * 0.8;
-      const baseY = height - 10;
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.lineTo(baseX + 18, baseY - treeH);
-      ctx.lineTo(baseX + 36, baseY);
-      ctx.fill();
-    }
-  }
-
-  // 2. SAKURA DUSK (Senja Kuil & Torii)
-  function drawSakuraScene(px) {
-    // Distant twilight gradient
+  function drawSky() {
     const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, 'rgba(45, 26, 42, 0.35)');
-    grad.addColorStop(1, 'rgba(24, 18, 26, 0.2)');
+    if (currentMode === 'night') {
+      if (currentSeason === 'ramadhan') {
+        grad.addColorStop(0, '#121829');
+        grad.addColorStop(0.65, '#1d2740');
+        grad.addColorStop(1, '#2b2c3a');
+      } else if (currentSeason === 'merdeka') {
+        grad.addColorStop(0, '#1d1624');
+        grad.addColorStop(0.65, '#2b1e2d');
+        grad.addColorStop(1, '#1d2230');
+      } else {
+        grad.addColorStop(0, '#111622');
+        grad.addColorStop(0.65, '#1b2436');
+        grad.addColorStop(1, '#232c3d');
+      }
+    } else {
+      if (currentSeason === 'sakura') {
+        grad.addColorStop(0, '#dbe9f4');
+        grad.addColorStop(0.65, '#f6ebe9');
+        grad.addColorStop(1, '#f4ede0');
+      } else if (currentSeason === 'autumn') {
+        grad.addColorStop(0, '#d8e4ec');
+        grad.addColorStop(0.6, '#f2e3ce');
+        grad.addColorStop(1, '#f4ede0');
+      } else if (currentSeason === 'hujan') {
+        grad.addColorStop(0, '#cbd7df');
+        grad.addColorStop(0.65, '#e2e8e8');
+        grad.addColorStop(1, '#eceae2');
+      } else if (currentSeason === 'winter') {
+        grad.addColorStop(0, '#d5e4f0');
+        grad.addColorStop(0.65, '#eaf1f6');
+        grad.addColorStop(1, '#f3f2ee');
+      } else {
+        grad.addColorStop(0, '#cfe3ef');
+        grad.addColorStop(0.55, '#ece9dc');
+        grad.addColorStop(1, '#f4ede0');
+      }
+    }
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
-
-    // Torii Gate silhouette on bottom-right
-    const toriiX = width * 0.82 + px * 0.4;
-    const toriiY = height - 140;
-    ctx.fillStyle = 'rgba(60, 28, 45, 0.55)';
-    // Top beams
-    ctx.fillRect(toriiX - 50, toriiY, 100, 8);
-    ctx.fillRect(toriiX - 44, toriiY + 14, 88, 6);
-    // Pillars
-    ctx.fillRect(toriiX - 28, toriiY + 14, 8, 126);
-    ctx.fillRect(toriiX + 20, toriiY + 14, 8, 126);
   }
 
-  // 3. BAMBOO MIST (Rumpun Bambu & Kabut Berarak)
-  function drawBambooScene(px) {
-    // Swaying bamboo stalks
-    const time = performance.now() * 0.001;
-    ctx.fillStyle = 'rgba(38, 54, 42, 0.4)';
-    for (let i = 0; i < 9; i++) {
-      const bx = (width / 8) * i + px * 0.6;
-      const sway = Math.sin(time + i * 1.5) * 8;
+  function drawCelestial(px) {
+    if (currentMode === 'night' || currentSeason === 'ramadhan') {
+      const mx = width * 0.84 + px * 0.2;
+      const my = height * 0.16;
+      ctx.save();
+      ctx.fillStyle = currentSeason === 'ramadhan' ? 'rgba(244, 206, 114, 0.88)' : 'rgba(243, 232, 198, 0.75)';
       ctx.beginPath();
-      ctx.moveTo(bx - 4, height);
-      ctx.quadraticCurveTo(bx + sway, height * 0.5, bx + sway * 1.5, 0);
-      ctx.lineTo(bx + sway * 1.5 + 7, 0);
-      ctx.quadraticCurveTo(bx + sway + 7, height * 0.5, bx + 3, height);
+      ctx.arc(mx, my, 24, 0, Math.PI * 2);
       ctx.fill();
-    }
-
-    // Rolling fog mist
-    ctx.fillStyle = 'rgba(160, 195, 175, 0.06)';
-    for (let f = 0; f < 3; f++) {
-      const fogY = height * (0.6 + f * 0.14);
-      const fogOffset = (time * 25 * (f + 1)) % width;
-      ctx.beginPath();
-      ctx.arc(fogOffset, fogY, 140, 0, Math.PI * 2);
-      ctx.arc(fogOffset - width, fogY, 140, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // 4. ONSEN SLATE (Pemandian Air Panas & Uap Mineral)
-  function drawOnsenScene(px) {
-    // Water basin border
-    ctx.fillStyle = 'rgba(28, 40, 54, 0.45)';
-    ctx.fillRect(0, height - 70, width, 70);
-
-    // Ripples
-    ctx.strokeStyle = 'rgba(120, 184, 230, 0.25)';
-    ctx.lineWidth = 1.5;
-    for (let i = ripplers.length - 1; i >= 0; i--) {
-      const rip = ripplers[i];
-      rip.r += 0.8;
-      rip.a -= 0.012;
-      if (rip.a <= 0 || rip.r >= rip.maxR) {
-        ripplers.splice(i, 1);
-        continue;
+      if (currentSeason === 'ramadhan') {
+        ctx.fillStyle = currentMode === 'night' ? '#141b2e' : '#dbe7ee';
+        ctx.beginPath();
+        ctx.arc(mx + 9, my - 5, 20, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.restore();
+    } else if (currentSeason === 'kemarau' || currentSeason === 'summer') {
+      const sx = width * 0.85 + px * 0.15;
+      const sy = height * 0.15;
+      const sun = ctx.createRadialGradient(sx, sy, 6, sx, sy, 90);
+      sun.addColorStop(0, 'rgba(255, 224, 145, 0.55)');
+      sun.addColorStop(1, 'rgba(255, 224, 145, 0)');
+      ctx.fillStyle = sun;
       ctx.beginPath();
-      ctx.ellipse(rip.x, rip.y, rip.r, rip.r * 0.4, 0, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.arc(sx, sy, 90, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
-  // 5. SLAMET DAWN (Fajar Gunung Slamet & Perkebunan Bumiayu)
-  function drawSlametDawnScene(px) {
-    // Sunrise glow behind Slamet peak
-    const sunGrad = ctx.createRadialGradient(width * 0.5 + px * 0.3, height * 0.5, 10, width * 0.5 + px * 0.3, height * 0.5, 260);
-    sunGrad.addColorStop(0, 'rgba(245, 180, 105, 0.35)');
-    sunGrad.addColorStop(1, 'rgba(30, 40, 32, 0)');
-    ctx.fillStyle = sunGrad;
-    ctx.fillRect(0, 0, width, height);
+  function drawGhibliClouds() {
+    ctx.save();
+    ctx.fillStyle = currentMode === 'night' ? 'rgba(180, 198, 224, 0.08)' : 'rgba(255, 253, 247, 0.65)';
+    for (const c of clouds) {
+      if (animMode !== 'off') {
+        c.x += c.speed;
+        if (c.x > width + 180) c.x = -180;
+      }
+      const s = c.scale;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 26 * s, 0, Math.PI * 2);
+      ctx.arc(c.x + 24 * s, c.y - 10 * s, 32 * s, 0, Math.PI * 2);
+      ctx.arc(c.x + 56 * s, c.y - 4 * s, 26 * s, 0, Math.PI * 2);
+      ctx.arc(c.x + 76 * s, c.y + 4 * s, 20 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
-    // Majestic Mount Slamet double peak
-    ctx.fillStyle = 'rgba(35, 52, 42, 0.6)';
+  function drawRollingHills(px) {
+    // Distant Mount Slamet watercolor ridge
+    ctx.fillStyle = currentMode === 'night' ? 'rgba(24, 34, 48, 0.72)' : 'rgba(130, 162, 146, 0.34)';
     ctx.beginPath();
     ctx.moveTo(0, height);
-    ctx.lineTo(0, height * 0.7);
-    ctx.lineTo(width * 0.35 + px * 0.4, height * 0.38);
-    ctx.lineTo(width * 0.50 + px * 0.4, height * 0.33); // Peak of Slamet (3,428 m)
-    ctx.lineTo(width * 0.65 + px * 0.4, height * 0.44);
-    ctx.lineTo(width, height * 0.72);
+    ctx.lineTo(0, height * 0.74);
+    ctx.quadraticCurveTo(width * 0.25 + px * 0.25, height * 0.62, width * 0.48 + px * 0.3, height * 0.56);
+    ctx.quadraticCurveTo(width * 0.72 + px * 0.25, height * 0.66, width, height * 0.72);
     ctx.lineTo(width, height);
+    ctx.closePath();
     ctx.fill();
 
-    // Terraced onion & tea fields
-    ctx.fillStyle = 'rgba(48, 72, 56, 0.4)';
-    for (let r = 0; r < 4; r++) {
-      const ry = height - (r + 1) * 24;
-      ctx.fillRect(0, ry, width, 18);
-    }
+    // Foreground soft meadow hill (Ghibli countryside)
+    ctx.fillStyle = currentMode === 'night' ? 'rgba(18, 28, 36, 0.82)' : 'rgba(104, 148, 114, 0.26)';
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(0, height * 0.85);
+    ctx.quadraticCurveTo(width * 0.3 + px * 0.5, height * 0.76, width * 0.65 + px * 0.5, height * 0.84);
+    ctx.quadraticCurveTo(width * 0.85 + px * 0.5, height * 0.88, width, height * 0.81);
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    ctx.fill();
   }
 
-  // Draw natural particle drift (Petals / Tea leaves / Steam / Fireflies)
-  function drawParticles() {
-    const time = performance.now() * 0.001;
-
+  function drawParticles(time) {
+    if (animMode === 'off') return;
     for (const p of particles) {
-      // Wind reaction towards cursor
-      const dx = mouseX - p.x;
-      const dy = mouseY - p.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 120 && dist > 1) {
-        p.x -= (dx / dist) * 1.5;
-        p.y -= (dy / dist) * 1.5;
-      }
-
-      p.x += p.vx + Math.sin(time + p.phase) * 0.5;
+      p.x += p.vx + Math.sin(time + p.phase) * (currentSeason === 'hujan' ? 0 : 0.35);
       p.y += p.vy;
       p.rot += p.vrot;
 
-      if (p.y > height + 20) { p.y = -20; p.x = Math.random() * width; }
+      if (p.vy > 0 && p.y > height + 20) { p.y = -15; p.x = Math.random() * width; }
+      if (p.vy < 0 && p.y < -20) { p.y = height + 15; p.x = Math.random() * width; }
       if (p.x < -20) p.x = width + 20;
       if (p.x > width + 20) p.x = -20;
 
@@ -247,64 +205,108 @@
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
 
-      if (currentTheme === 'sakura') {
-        // Cherry blossom petal (pink)
-        ctx.fillStyle = `rgba(242, 168, 192, ${p.alpha})`;
+      if (currentSeason === 'sakura') {
+        ctx.fillStyle = `rgba(235, 152, 178, ${p.alpha})`;
         ctx.beginPath();
-        ctx.ellipse(0, 0, p.size, p.size * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, p.size * 1.1, p.size * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
-      } else if (currentTheme === 'onsen') {
-        // Rising steam particle (soft white/cyan bubble)
-        ctx.fillStyle = `rgba(180, 220, 245, ${p.alpha * 0.45})`;
+      } else if (currentSeason === 'autumn') {
+        ctx.fillStyle = p.phase > 5 ? `rgba(198, 92, 52, ${p.alpha})` : `rgba(218, 148, 56, ${p.alpha})`;
         ctx.beginPath();
-        ctx.arc(0, 0, p.size * 1.4, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, p.size * 1.2, p.size * 0.6, 0, 0, Math.PI * 2);
         ctx.fill();
-        p.vy = -Math.abs(p.vy) * 0.7; // Steam rises
-      } else if (currentTheme === 'slamet') {
-        // Golden sunrise pollen / dawn spark
-        ctx.fillStyle = `rgba(245, 210, 130, ${p.alpha})`;
-        ctx.fillRect(-p.size * 0.5, -p.size * 0.5, p.size, p.size);
+      } else if (currentSeason === 'winter') {
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.48, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (currentSeason === 'hujan') {
+        ctx.rotate(0);
+        ctx.strokeStyle = currentMode === 'night' ? `rgba(170, 205, 232, ${p.alpha * 0.55})` : `rgba(92, 126, 152, ${p.alpha * 0.55})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-3, 12);
+        ctx.stroke();
+      } else if (currentSeason === 'ramadhan') {
+        ctx.rotate(0);
+        ctx.fillStyle = `rgba(232, 178, 72, ${p.alpha * 0.8})`;
+        ctx.beginPath();
+        ctx.moveTo(0, -p.size);
+        ctx.lineTo(p.size * 0.7, 0);
+        ctx.lineTo(0, p.size);
+        ctx.lineTo(-p.size * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+      } else if (currentSeason === 'merdeka') {
+        ctx.fillStyle = p.phase > 5 ? `rgba(196, 56, 56, ${p.alpha * 0.78})` : `rgba(248, 245, 238, ${p.alpha * 0.85})`;
+        ctx.beginPath();
+        ctx.roundRect(-p.size * 0.6, -p.size * 0.8, p.size * 1.2, p.size * 1.6, 3);
+        ctx.fill();
+      } else if (currentSeason === 'summer') {
+        const pulse = 0.45 + Math.abs(Math.sin(time * 2 + p.phase)) * 0.55;
+        ctx.fillStyle = `rgba(245, 212, 102, ${p.alpha * pulse})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.42, 0, Math.PI * 2);
+        ctx.fill();
       } else {
-        // Matcha & Bamboo: green tea leaf shape
-        ctx.fillStyle = `rgba(138, 194, 117, ${p.alpha})`;
+        // Kemarau: warm dandelion seeds drifting
+        ctx.fillStyle = currentMode === 'night' ? `rgba(235, 214, 158, ${p.alpha * 0.6})` : `rgba(122, 152, 98, ${p.alpha * 0.6})`;
         ctx.beginPath();
-        ctx.moveTo(-p.size, 0);
-        ctx.quadraticCurveTo(0, -p.size * 0.6, p.size, 0);
-        ctx.quadraticCurveTo(0, p.size * 0.6, -p.size, 0);
+        ctx.arc(0, 0, p.size * 0.35, 0, Math.PI * 2);
         ctx.fill();
       }
-
       ctx.restore();
     }
   }
 
-  // Animation render loop fixed at 24 FPS (save RAM & CPU for Odroid C2)
-  const FRAME_INTERVAL = 1000 / 24; // ~41.6ms
-  let lastSceneFrame = performance.now();
-  function loop(now) {
-    if (isVisible && animMode !== 'off') {
-      const delta = now - lastSceneFrame;
-      if (delta >= FRAME_INTERVAL) {
-        lastSceneFrame = now - (delta % FRAME_INTERVAL);
-        drawBackground();
-      }
-    }
-    requestAnimationFrame(loop);
+  function drawFrame(now) {
+    ctx.clearRect(0, 0, width, height);
+    mouseX += (targetMouseX - mouseX) * 0.08;
+    mouseY += (targetMouseY - mouseY) * 0.08;
+    const px = (mouseX / (width || 1) - 0.5) * 16;
+
+    drawSky();
+    drawCelestial(px);
+    drawGhibliClouds();
+    drawRollingHills(px);
+    drawParticles(now * 0.001);
   }
 
-  // Public control API for theme switcher
+  let lastFrame = 0;
+  function tick(now) {
+    requestAnimationFrame(tick);
+    if (!isVisible) return;
+    if (animMode === 'off') return;
+    const targetMs = animMode === 'eco' ? 83 : 42;
+    if (now - lastFrame < targetMs) return;
+    lastFrame = now;
+    drawFrame(now);
+  }
+
   window.MastermindScene = {
+    setMode(mode) {
+      currentMode = mode === 'night' ? 'night' : 'day';
+      drawFrame(performance.now());
+    },
+    setSeason(season) {
+      currentSeason = season || 'kemarau';
+      initParticles();
+      drawFrame(performance.now());
+    },
     setTheme(theme) {
-      currentTheme = theme;
-      initThemeParticles();
+      currentSeason = theme || 'kemarau';
+      initParticles();
+      drawFrame(performance.now());
     },
     setAnimMode(mode) {
       animMode = mode;
       localStorage.setItem('mm-anim', mode);
-      initThemeParticles();
+      initParticles();
+      drawFrame(performance.now());
     }
   };
 
   resize();
-  requestAnimationFrame(loop);
+  requestAnimationFrame(tick);
 })();

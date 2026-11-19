@@ -2,23 +2,41 @@
 //! and drafts a jail-ready `.batasan.toml` plus a release workflow. No compiling.
 use crate::batasan::{Batasan, TOOLS};
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, serde::Serialize)]
 pub struct Findings {
     pub port: Option<u16>,
     pub tools: Vec<String>,
     pub exec_args: Vec<String>,
+    pub language: String,
+    pub entry: Option<String>,
+    pub folder_paths: Vec<String>,
 }
 
-const CANDIDATES: [&str; 6] = ["install.sh", "install-tui.sh", "install-wizard.sh", "README.md", "deploy/install.sh", "systemd/app.service"];
+const CANDIDATES: [&str; 10] = [
+    "install.sh", "install-tui.sh", "install-wizard.sh", "README.md",
+    "deploy/install.sh", "systemd/app.service", "package.json",
+    "requirements.txt", "app.py", "index.html",
+];
 
-/// Scan text blobs for port, whitelisted tools and ExecStart args.
+/// Scan text blobs for port, whitelisted tools, webapp runtime, folder requests, and ExecStart args.
 pub fn analyze(texts: &[String]) -> Findings {
-    let mut f = Findings::default();
+    let mut f = Findings { language: "go".into(), ..Default::default() };
     for t in texts {
+        if t.contains("\"dependencies\"") || t.contains("\"scripts\"") && t.contains("node") {
+            f.language = "node".into();
+            if f.entry.is_none() { f.entry = Some("index.js".into()); }
+        } else if t.contains("flask") || t.contains("fastapi") || t.contains("uvicorn") || t.contains("http.server") {
+            f.language = "python".into();
+            if f.entry.is_none() { f.entry = Some("app.py".into()); }
+        } else if (t.contains("<!doctype html") || t.contains("<!DOCTYPE html") || t.contains("<html")) && f.language == "go" {
+            f.language = "static".into();
+            if f.entry.is_none() { f.entry = Some("index.html".into()); }
+        }
+
         for line in t.lines() {
             let l = line.trim();
             if f.port.is_none() {
-                if let Some(i) = l.find("PORT=").or_else(|| l.find("--port")) {
+                if let Some(i) = l.find("PORT=").or_else(|| l.find("--port")).or_else(|| l.find("port:")) {
                     let digits: String = l[i..].chars().skip_while(|c| !c.is_ascii_digit()).take_while(char::is_ascii_digit).collect();
                     if let Ok(p) = digits.parse::<u16>() { if p >= 1024 { f.port = Some(p); } }
                 }
@@ -28,9 +46,17 @@ pub fn analyze(texts: &[String]) -> Findings {
                     if !a.starts_with("--port") && f.exec_args.len() < 8 { f.exec_args.push(a.to_string()); }
                 }
             }
+            for root in ["/mnt/", "/media/", "/srv/"] {
+                if let Some(idx) = l.find(root) {
+                    let path: String = l[idx..].chars().take_while(|c| c.is_ascii_alphanumeric() || "/._-".contains(*c)).collect();
+                    if path.len() > root.len() && !f.folder_paths.contains(&path) && f.folder_paths.len() < 6 {
+                        f.folder_paths.push(path);
+                    }
+                }
+            }
         }
         for tool in TOOLS {
-            if t.contains(tool) && !f.tools.iter().any(|x| x == tool) && !["git", "curl", "python3"].contains(&tool) {
+            if t.contains(tool) && !f.tools.iter().any(|x| x == tool) && !["git", "curl", "python3", "node", "npm"].contains(&tool) {
                 f.tools.push(tool.to_string());
             }
         }
@@ -38,13 +64,20 @@ pub fn analyze(texts: &[String]) -> Findings {
     f
 }
 
-/// Draft a validated `.batasan.toml`; port/mem are user-adjustable in the confirmation screen.
+/// Draft a validated `.batasan.toml`; port/mem/folders are user-adjustable in the confirmation screen.
 pub fn draft(repo: &str, f: &Findings, port: u16, mem_mb: u32, asset: &str) -> Result<String, String> {
     let name = repo.split('/').nth(1).ok_or("repo must be owner/name")?;
     let id: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let lang = if f.language.is_empty() { "go" } else { f.language.as_str() };
     let tools = f.tools.iter().map(|t| format!("\"{t}\"")).collect::<Vec<_>>().join(", ");
+    let entry_line = f.entry.as_ref().map(|e| format!("entry = \"{e}\"\n")).unwrap_or_default();
+    let mut paths_rw = vec![format!("\"/var/lib/mastermind/{id}\"")];
+    for p in &f.folder_paths {
+        paths_rw.push(format!("\"{p}\""));
+    }
     let toml = format!(
-        "[app]\nid = \"{id}\"\nrepo = \"{repo}\"\nasset = \"{asset}\"\nlanguage = \"go\"\n\n[run]\nport = {port}\npriority = 50\n\n[limits]\nmemory_max_mb = {mem_mb}\ncpu_quota_pct = 50\ntasks_max = 64\n\n[permissions]\npaths_rw = [\"/var/lib/mastermind/{id}\"]\ntools = [{tools}]\n"
+        "[app]\nid = \"{id}\"\nrepo = \"{repo}\"\nasset = \"{asset}\"\nlanguage = \"{lang}\"\n\n[run]\nport = {port}\n{entry_line}priority = 50\n\n[limits]\nmemory_max_mb = {mem_mb}\ncpu_quota_pct = 50\ntasks_max = 64\n\n[permissions]\npaths_rw = [{}]\ntools = [{tools}]\nsandbox_tools = true\n",
+        paths_rw.join(", ")
     );
     Batasan::parse(&toml).map_err(|e| e.to_string())?;
     Ok(toml)
@@ -54,7 +87,7 @@ pub fn workflow(id: &str) -> String {
     format!("name: release\non:\n  push:\n    tags: ['v*']\njobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - uses: actions/checkout@v4\n      - run: echo \"build your arm64 binary as {id}-linux-arm64 here\"\n      - run: sha256sum {id}-linux-arm64 > checksums.txt\n      - uses: softprops/action-gh-release@v2\n        with:\n          files: |\n            {id}-linux-arm64\n            checksums.txt\n")
 }
 
-/// Fetch candidate legacy files from the repo's default branch.
+/// Fetch candidate legacy/webapp files from the repo's default branch.
 pub fn fetch_legacy(repo: &str) -> Vec<String> {
     CANDIDATES.iter().filter_map(|c| crate::discover::fetch_text(&format!("https://raw.githubusercontent.com/{repo}/HEAD/{c}")).ok()).collect()
 }

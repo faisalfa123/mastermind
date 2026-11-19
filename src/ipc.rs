@@ -11,6 +11,7 @@ pub enum Command {
     Quarantine(String),
     Logs(String),
     Reconfigure(String),
+    Rollback(String),
     SelfUpdate,
 }
 
@@ -38,6 +39,7 @@ impl Command {
             "quarantine" => Ok(Command::Quarantine(id)),
             "logs" => Ok(Command::Logs(id)),
             "reconfigure" => Ok(Command::Reconfigure(id)),
+            "rollback" => Ok(Command::Rollback(id)),
             "self-update" => Ok(Command::SelfUpdate),
             _ => Err("unknown verb"),
         }

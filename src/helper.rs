@@ -63,6 +63,7 @@ pub fn handle(cfg: &Config, cmd: Command) -> Result<String, String> {
         Command::Quarantine(id) => quarantine(cfg, &id),
         Command::Logs(id) => logs(cfg, &id),
         Command::Reconfigure(id) => reconfigure(cfg, &id),
+        Command::Rollback(id) => rollback(cfg, &id),
         Command::SelfUpdate => self_update(cfg),
     }
 }
@@ -197,17 +198,77 @@ fn self_update(cfg: &Config) -> Result<String, String> {
     Ok("updated".into())
 }
 
+/// Copy or fetch requested helper tools into `<app_dir>/sandbox/bin` so the app never mutates host OS.
+fn provision_sandbox_tools(app_dir: &Path, tools: &[String], dry_run: bool) {
+    if tools.is_empty() { return; }
+    let sbin = app_dir.join("sandbox").join("bin");
+    let slib = app_dir.join("sandbox").join("lib");
+    let _ = fs::create_dir_all(&sbin);
+    let _ = fs::create_dir_all(&slib);
+    let _ = fs::set_permissions(app_dir.join("sandbox"), fs::Permissions::from_mode(0o755));
+    let _ = fs::set_permissions(&sbin, fs::Permissions::from_mode(0o755));
+    let _ = fs::set_permissions(&slib, fs::Permissions::from_mode(0o755));
+    if dry_run { return; }
+
+    for tool in tools {
+        let dest = sbin.join(tool);
+        if dest.exists() { continue; }
+        let host_candidates = [
+            PathBuf::from("/usr/local/bin").join(tool),
+            PathBuf::from("/usr/bin").join(tool),
+            PathBuf::from("/bin").join(tool),
+        ];
+        if let Some(src) = host_candidates.into_iter().find(|p| p.exists()) {
+            if fs::copy(&src, &dest).is_ok() {
+                let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o755));
+            }
+        } else if tool == "yt-dlp" {
+            // Download standalone aarch64 yt-dlp strictly into app sandbox (never host /usr/bin)
+            if let Ok(bytes) = crate::installer::download(
+                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64",
+                48 << 20,
+            ) {
+                let v = scanner::scan(&bytes);
+                if !v.blocked && store::write_atomic(&dest, &bytes, 0o755).is_ok() {
+                    let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o755));
+                }
+            }
+        }
+    }
+}
+
+fn payload_target_path(cfg: &Config, id: &str, b: &Batasan) -> PathBuf {
+    let dir = bin_dir(cfg, id);
+    match b.app.language.as_str() {
+        "static" => dir.join(b.run.entry.as_deref().unwrap_or("index.html")),
+        "node" => dir.join(b.run.entry.as_deref().unwrap_or("index.js")),
+        "python" => dir.join(b.run.entry.as_deref().unwrap_or("app.py")),
+        _ => bin_path(cfg, id),
+    }
+}
+
 fn install(cfg: &Config, id: &str) -> Result<String, String> {
     let st = staging(cfg, id);
-    let bin = read_nofollow(&st.join("bin"), 96 << 20)?;
+    let bin_stage = st.join("bin");
+    let bin = read_nofollow(&bin_stage, 96 << 20)?;
     let toml = String::from_utf8(read_nofollow(&st.join("batasan.toml"), 64 << 10)?).map_err(|_| "toml not utf-8")?;
     let b = Batasan::parse(&toml).map_err(|e| e.to_string())?;
     if b.app.id != id { return Err("id mismatch".into()); }
     let digest = sha(&bin);
     // Independent re-checks: the helper trusts nothing the web process staged.
     if store::read_blacklist(&cfg.locked_dir).iter().any(|x| x.id == id || x.sha256 == digest) { return Err("blacklisted".into()); }
-    let v = scanner::scan(&bin);
+    let mut v = scanner::scan_for_language(&bin, &b.app.language);
+    if !cfg.dry_run {
+        scanner::scan_clamav(&bin_stage, &mut v);
+    }
     if v.blocked { return Err(format!("scanner: {}", v.reasons.join("; "))); }
+
+    // Safe update procedure: gracefully stop existing service first to release its port cleanly.
+    let unit = unit_name(id);
+    if !cfg.dry_run && systemctl(cfg, &["is-active", &unit]).is_ok() {
+        let _ = systemctl(cfg, &["stop", &unit]);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 
     let dir = bin_dir(cfg, id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -215,13 +276,16 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
     let _ = fs::set_permissions(&cfg.apps_dir, fs::Permissions::from_mode(0o755));
     let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o755));
 
-    // Pastikan folder data/jail (/var/lib/mastermind/{id}) sudah ada
+    // Provision per-app sandboxed tools/libraries inside `<app_dir>/sandbox/`
+    provision_sandbox_tools(&dir, &b.permissions.tools, cfg.dry_run);
+
+    // Ensure jail data directory exists
     let jail_dir = Path::new(&cfg.data_dir).join(id);
     fs::create_dir_all(&jail_dir).map_err(|e| e.to_string())?;
     let _ = fs::set_permissions(&cfg.data_dir, fs::Permissions::from_mode(0o755));
     let _ = fs::set_permissions(&jail_dir, fs::Permissions::from_mode(0o755));
 
-    // Pastikan seluruh direktori paths_rw yang dideklarasikan aplikasi sudah ada di filesystem
+    // Ensure approved paths_rw exist
     for p in &b.permissions.paths_rw {
         let p_buf = Path::new(p);
         if !p_buf.exists() {
@@ -231,26 +295,40 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
         }
     }
 
-    let target = bin_path(cfg, id);
+    let target = payload_target_path(cfg, id, &b);
     let prev = dir.join("bin.prev");
+    let unit_path = Path::new(&cfg.units_dir).join(&unit);
+    let unit_prev = dir.join("unit.prev");
     let had_prev = target.exists();
-    if had_prev { fs::rename(&target, &prev).map_err(|e| e.to_string())?; }
-    store::write_atomic(&target, &bin, 0o755).map_err(|e| e.to_string())?;
-    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o755));
-    let unit_path = Path::new(&cfg.units_dir).join(unit_name(id));
-    store::write_atomic(&unit_path, crate::systemd::unit(&b, &target.to_string_lossy()).as_bytes(), 0o644).map_err(|e| e.to_string())?;
+    if had_prev {
+        let _ = fs::copy(&target, &prev);
+        if unit_path.exists() {
+            let _ = fs::copy(&unit_path, &unit_prev);
+        }
+    }
+    let file_mode = if matches!(b.app.language.as_str(), "static") { 0o644 } else { 0o755 };
+    store::write_atomic(&target, &bin, file_mode).map_err(|e| e.to_string())?;
+    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(file_mode));
+    store::write_atomic(&dir.join("batasan.toml"), toml.as_bytes(), 0o644).ok();
+
+    let exec_ref = bin_path(cfg, id);
+    store::write_atomic(&unit_path, crate::systemd::unit(&b, &exec_ref.to_string_lossy()).as_bytes(), 0o644).map_err(|e| e.to_string())?;
     systemctl(cfg, &["daemon-reload"])?;
-    systemctl(cfg, &["enable", &unit_name(id)])?;
-    systemctl(cfg, &["restart", &unit_name(id)])?;
+    systemctl(cfg, &["enable", &unit])?;
+    systemctl(cfg, &["restart", &unit])?;
     if !cfg.dry_run {
         std::thread::sleep(std::time::Duration::from_secs(3));
-        let active = systemctl(cfg, &["is-active", &unit_name(id)]).is_ok();
+        let active = systemctl(cfg, &["is-active", &unit]).is_ok();
         if !active {
             let log_err = logs(cfg, id).unwrap_or_else(|_| "tidak ada log journalctl".into());
             let clean_log = log_err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
             if had_prev {
-                let _ = fs::rename(&prev, &target);
-                let _ = systemctl(cfg, &["restart", &unit_name(id)]);
+                let _ = fs::copy(&prev, &target);
+                if unit_prev.exists() {
+                    let _ = fs::copy(&unit_prev, &unit_path);
+                    let _ = systemctl(cfg, &["daemon-reload"]);
+                }
+                let _ = systemctl(cfg, &["restart", &unit]);
                 return Err(format!("new version failed health check, rolled back: {clean_log}"));
             }
             return Err(format!("service failed to start: {clean_log}"));
@@ -258,6 +336,34 @@ fn install(cfg: &Config, id: &str) -> Result<String, String> {
     }
     let _ = fs::remove_dir_all(&st);
     Ok(digest)
+}
+
+fn rollback(cfg: &Config, id: &str) -> Result<String, String> {
+    let dir = bin_dir(cfg, id);
+    let prev = dir.join("bin.prev");
+    if !prev.exists() {
+        return Err("no previous snapshot available for rollback".into());
+    }
+    let unit = unit_name(id);
+    let unit_path = Path::new(&cfg.units_dir).join(&unit);
+    let unit_prev = dir.join("unit.prev");
+    let _ = systemctl(cfg, &["stop", &unit]);
+
+    let target = bin_path(cfg, id);
+    fs::copy(&prev, &target).map_err(|e| format!("failed to restore binary: {e}"))?;
+    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o755));
+    if unit_prev.exists() {
+        let _ = fs::copy(&unit_prev, &unit_path);
+    }
+    systemctl(cfg, &["daemon-reload"])?;
+    systemctl(cfg, &["restart", &unit])?;
+    if !cfg.dry_run {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if systemctl(cfg, &["is-active", &unit]).is_err() {
+            return Err("rollback restored files but service failed to start".into());
+        }
+    }
+    Ok("rolled back".into())
 }
 
 fn remove(cfg: &Config, id: &str) -> Result<String, String> {

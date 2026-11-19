@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="id" data-theme="matcha">
+<html lang="id" data-mode="day" data-season="kemarau">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#151d18">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f4ede0">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Mastermind">
 <meta name="referrer" content="no-referrer">
-<title>Mastermind — Zen App Manager</title>
+<title>Mastermind: Pengelola Aplikasi Bumiayu</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -18,43 +18,55 @@
 <canvas id="zen-canvas" aria-hidden="true"></canvas>
 <header class="top">
   <div class="logo">
-    <!-- Interactive Shell Bumiayu Mascot with Cursor Eye Tracking -->
-    <div class="kodama-mascot" id="kodama-mascot" title="Shell Bumiayu (Cangkang Terminal & Gunung Slamet)">
-      <div class="kodama-caping"></div>
-      <div class="kodama-head">
-        <div class="kodama-eye left"><span class="pupil"></span></div>
-        <div class="kodama-eye right"><span class="pupil"></span></div>
-        <div class="kodama-mouth"></div>
-      </div>
-      <div class="kodama-shell"><span class="shell-prompt">&gt;_</span></div>
-    </div>
+    <button type="button" class="kodama-mascot" id="kodama-mascot" aria-label="Shell Bumiayu: Info Sistem dan Pembaruan Mastermind" title="Shell Bumiayu (Klik untuk Info Sistem & Update Mastermind)">
+      <span class="kodama-caping" aria-hidden="true"></span>
+      <span class="kodama-head" aria-hidden="true">
+        <span class="kodama-eye left"><span class="pupil"></span></span>
+        <span class="kodama-eye right"><span class="pupil"></span></span>
+        <span class="kodama-mouth"></span>
+      </span>
+      <span class="kodama-shell" aria-hidden="true"><span class="shell-prompt">&gt;_</span></span>
+    </button>
     <div class="brand">
       <h1>MASTERMIND</h1>
-      <span class="sub-zen">BUMIAYU ZEN MANAGER</span>
+      <span class="sub-zen">BUMIAYU STUDIO MANAGER</span>
     </div>
   </div>
 
   <div class="header-controls">
-    <!-- PWA Install Button Header -->
-    <button id="pwa-install-btn" class="pwa-install-pill" onclick="window.triggerPwaInstall()" title="Pasang ke Layar Utama HP" hidden>
-      <span>📱 Install App</span>
+    <button type="button" id="pwa-install-btn" class="pwa-install-pill" onclick="window.triggerPwaInstall()" title="Pasang ke Layar Utama HP" hidden>
+      <span>Pasang App</span>
     </button>
 
-    <!-- Theme Switcher -->
+    <button type="button" id="mode-toggle" class="mode-toggle-btn" aria-pressed="false" title="Ganti Mode Siang Ghibli dan Malam Lentera">
+      <span id="mode-toggle-label">Mode Siang</span>
+    </button>
+
     <div class="theme-select-wrapper">
-      <span class="theme-icon">🍵</span>
-      <select id="theme-select" aria-label="Ganti Tema Zen">
-        <option value="matcha">Matcha Forest</option>
-        <option value="sakura">Sakura Dusk</option>
-        <option value="bamboo">Bamboo Mist</option>
-        <option value="onsen">Onsen Slate</option>
-        <option value="slamet">Slamet Dawn</option>
+      <label for="season-select" class="sr-only">Pilih Event Musim</label>
+      <select id="season-select" aria-label="Pilih Event Musim Indonesia dan Internasional">
+        <option value="auto">Musim: Otomatis</option>
+        <optgroup label="Event Indonesia">
+          <option value="ramadhan">Ramadhan &amp; Lebaran</option>
+          <option value="merdeka">17 Agustus (Merdeka)</option>
+          <option value="hujan">Musim Hujan</option>
+          <option value="kemarau">Musim Kemarau</option>
+        </optgroup>
+        <optgroup label="Musim Internasional">
+          <option value="sakura">Spring (Sakura)</option>
+          <option value="summer">Summer (Kunang-kunang)</option>
+          <option value="autumn">Autumn (Maple)</option>
+          <option value="winter">Winter (Natal &amp; Tahun Baru)</option>
+        </optgroup>
       </select>
     </div>
 
-    <!-- Anim Mode Switcher -->
+    <button type="button" id="season-calendar-btn" class="season-pill-btn" title="Lihat Kalender Event Musim Indonesia &amp; Internasional">
+      <span id="season-pill-text">Kalender Musim</span>
+    </button>
+
     <div class="theme-select-wrapper">
-      <span class="theme-icon">🎨</span>
+      <label for="anim-select" class="sr-only">Mode Animasi Latar</label>
       <select id="anim-select" aria-label="Mode Animasi Latar">
         <option value="full">Anim: Penuh</option>
         <option value="eco">Anim: Hemat</option>
@@ -62,37 +74,51 @@
       </select>
     </div>
 
-    <!-- FPS indicator badge -->
-    <span class="fps-badge" id="fps-badge" title="Mesin Render Fixed 24 FPS (Hemat RAM & CPU Odroid C2)">24 FPS</span>
+    <span class="fps-badge" id="fps-badge" title="Mesin Render Fixed 24 FPS (Hemat RAM &amp; CPU Odroid C2)">24 FPS</span>
 
-    <nav id="nav" hidden>
-      <button data-tab="city">&#127961; KOTA</button>
-      <button data-tab="apps" class="on">APPS</button>
-      <button data-tab="import">&#128269; IMPOR</button>
-      <button data-tab="catalog">KATALOG</button>
-      <button data-tab="sites">SITUS</button>
-      <button data-tab="creator">RACIK BATASAN</button>
-      <button data-tab="blacklist">&#9760; BLACKLIST</button>
-      <button data-tab="audit">AUDIT</button>
-      <button id="logout" class="ghost">KELUAR</button>
+    <nav id="nav" aria-label="Navigasi Utama" hidden>
+      <button type="button" data-tab="city">KOTA 3D</button>
+      <button type="button" data-tab="apps" class="on" id="nav-apps-btn">APPS</button>
+      <button type="button" data-tab="import">IMPOR</button>
+      <button type="button" data-tab="catalog">KATALOG</button>
+      <button type="button" data-tab="sites">SITUS</button>
+      <button type="button" data-tab="creator">RACIK BATASAN</button>
+      <button type="button" data-tab="blacklist">BLACKLIST</button>
+      <button type="button" data-tab="audit">AUDIT</button>
+      <button type="button" id="logout" class="ghost">KELUAR</button>
     </nav>
   </div>
 </header>
 
-<div id="offline" class="banner" hidden>KONEKSI TERPUTUS &mdash; Menampilkan data cache terakhir (hanya baca)</div>
+<div id="offline" class="banner" hidden>KONEKSI TERPUTUS: Menampilkan data cache terakhir (hanya baca)</div>
 <main id="view"></main>
+<footer class="site-footer">
+  <span>Mastermind Bumiayu</span>
+  <span id="footer-season-info">Suasana musiman aktif</span>
+</footer>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<!-- Modal dialog konfirmasi / 2FA -->
 <dialog id="dlg">
   <form method="dialog" id="dlgform">
     <p id="dlgmsg"></p>
+    <label for="dlgtotp" class="sr-only">Kode Verifikasi atau Password Admin</label>
     <input id="dlgtotp" autocomplete="off" placeholder="JAWABAN RAHASIA" hidden>
     <div class="row">
-      <button value="cancel" class="ghost">BATAL</button>
-      <button value="ok" id="dlgok" class="good">LANJUT</button>
+      <button type="button" value="cancel" class="ghost" onclick="document.getElementById('dlg').close('cancel')">BATAL</button>
+      <button type="submit" value="ok" id="dlgok" class="good">LANJUT</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="season-dlg">
+  <div class="season-modal-body">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h3 style="margin:0;">Kalender Event Musim</h3>
+      <button type="button" class="ghost" onclick="document.getElementById('season-dlg').close()">Tutup</button>
+    </div>
+    <p class="dim" style="margin-top:0;">Pilih musim secara otomatis berdasarkan tanggal hari ini, atau pratinjau suasana event Indonesia dan Internasional kapan saja.</p>
+    <div id="season-calendar-list" class="season-cal-grid"></div>
+  </div>
 </dialog>
 
 <script src="/three.min.js"></script>
