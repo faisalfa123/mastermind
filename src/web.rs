@@ -346,13 +346,25 @@ fn apps_json(app: &App, force: bool) -> Value {
         let status = ipc::call(&app.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
         let effective_port = if i.port > 0 { i.port } else { crate::localscan::default_app_port(id).unwrap_or(0) };
         let has_rollback = i.prev_version.is_some() || std::path::Path::new(&app.cfg.apps_dir).join(id).join("bin.prev").exists();
+        let mut latest_version = i.version.clone();
+        let mut update_available = false;
+        let mut description = "(aplikasi terkelola)".to_string();
+        if !i.repo.is_empty() {
+            if let Ok(e) = discover::inspect_repo(&app.cfg, &i.repo) {
+                latest_version = e.version.clone();
+                if !e.description.is_empty() {
+                    description = e.description;
+                }
+                update_available = normalize_version_tag(&i.version) != normalize_version_tag(&latest_version);
+            }
+        }
         out.push(json!({
-            "id": id, "repo": i.repo, "version": i.version, "latest_version": i.version,
-            "description": "(aplikasi terkelola)", "priority": i.priority,
+            "id": id, "repo": i.repo, "version": i.version, "latest_version": latest_version,
+            "description": description, "priority": i.priority,
             "port": effective_port, "internal_port": i.internal_port,
             "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct,
             "language": i.language, "autostart": i.autostart, "installed": i, "status": status,
-            "verified": i.verified, "update_available": false, "has_rollback": has_rollback,
+            "verified": i.verified, "update_available": update_available, "has_rollback": has_rollback,
             "warnings": i.warnings, "sandbox_tools": i.sandbox_tools, "folder_paths": i.folder_paths,
             "mem_mb": cgroup_mem_mb(id), "cpu_pct": cgroup_cpu_pct(id)
         }));
@@ -1050,8 +1062,12 @@ tasks_max = 64
                             let (fresh, _) = app.catalog(true);
                             entries = fresh;
                         }
-                        let Some(e) = entries.iter().find(|e| e.id == *id) else { return err(404, "not in catalog") };
-                        let mut entry = e.clone();
+                        let e_opt = entries.into_iter().find(|e| e.id == *id).or_else(|| {
+                            let repo = app.store.lock().unwrap().state.apps.get(*id).map(|a| a.repo.clone())?;
+                            discover::inspect_repo(&app.cfg, &repo).ok()
+                        });
+                        let Some(e) = e_opt else { return err(404, "Aplikasi tidak ditemukan di katalog maupun repositori asalnya"); };
+                        let mut entry = e;
                         if let Some(custom_toml) = b["toml"].as_str() {
                             if !custom_toml.trim().is_empty() {
                                 match crate::batasan::Batasan::parse(custom_toml) {

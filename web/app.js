@@ -1131,7 +1131,9 @@ function appCard(a) {
   }
   frontActions.push(h('button', { type: 'button', class: 'ghost', onclick: () => showAppLogs(a.id) }, 'Log'));
   if (a.update_available) {
-    frontActions.push(act('update', `Perbarui ke ${a.latest_version || a.version}`, 'good'));
+    frontActions.push(act('update', `🚀 Perbarui ke ${a.latest_version || a.version}`, 'good'));
+  } else {
+    frontActions.push(act('update', '🔄 Pasang Ulang / Perbarui', 'ghost'));
   }
   if (a.has_rollback) {
     frontActions.push(h('button', {
@@ -1152,7 +1154,7 @@ function appCard(a) {
 
   const installedVer = (a.installed && a.installed.version) ? a.installed.version : a.version;
   const updateBanner = a.update_available
-    ? h('div', { class: 'update-pill' }, `Update Tersedia: ${installedVer} -> ${a.latest_version || a.version}`)
+    ? h('div', { class: 'update-pill pulse', title: `Tersedia versi baru ${a.latest_version} dari repositori` }, `🚀 Pembaruan Tersedia: ${installedVer} ➔ ${a.latest_version || a.version}`)
     : null;
 
   const warningsBox = (Array.isArray(a.warnings) && a.warnings.length)
@@ -2535,7 +2537,29 @@ async function render() {
       }
       const list = d.apps.filter(a => tab === 'apps' ? a.installed : !a.installed);
       const out = [await sysbar()];
-      if (tab === 'apps') out.push(h('div', { class: 'row' }, h('button', { type: 'button', class: d.lockdown ? 'good' : 'danger', onclick: () => sensitive(d.lockdown ? 'Matikan lockdown?' : 'LOCKDOWN: hentikan semua app non-kritis?', c => api('lockdown', 'POST', { on: !d.lockdown, totp: c })).then(render) }, d.lockdown ? 'Akhiri lockdown' : 'Lockdown')));
+      if (tab === 'apps') {
+        const checkAllUpdatesBtn = h('button', {
+          type: 'button',
+          class: 'ghost',
+          style: 'display: inline-flex; align-items: center; gap: 6px;',
+          title: 'Periksa pembaruan rilis terbaru untuk semua aplikasi dari repositori GitHub',
+          onclick: async () => {
+            toast('Memindai pembaruan dari GitHub...');
+            await api('refresh', 'POST').catch(e => toast(e.message));
+            render();
+          }
+        }, '🔍 Cek Pembaruan Semua Aplikasi');
+
+        const updateSummary = updateCount > 0
+          ? h('span', { class: 'tag', style: 'background: #10b981; color: #052e16; font-weight: bold; padding: 4px 10px; font-size: 11px;' }, `🚀 ${updateCount} Aplikasi Memiliki Rilis Baru`)
+          : null;
+
+        out.push(h('div', { class: 'row', style: 'align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;' },
+          h('button', { type: 'button', class: d.lockdown ? 'good' : 'danger', onclick: () => sensitive(d.lockdown ? 'Matikan lockdown?' : 'LOCKDOWN: hentikan semua app non-kritis?', c => api('lockdown', 'POST', { on: !d.lockdown, totp: c })).then(render) }, d.lockdown ? 'Akhiri lockdown' : 'Lockdown'),
+          checkAllUpdatesBtn,
+          updateSummary
+        ));
+      }
       out.push(h('h2', {}, tab === 'apps' ? 'APLIKASI TERPASANG' : 'KATALOG TERSEDIA'));
       out.push(list.length ? h('div', { class: 'grid' }, list.map(appCard)) : h('div', { class: 'card' }, h('p', { class: 'dim', style: 'margin:0;' }, tab === 'apps' ? 'Belum ada aplikasi terpasang. Buka tab KATALOG atau SITUS untuk memasang aplikasi pertama Anda.' : 'Semua aplikasi dari katalog sudah terpasang, atau tekan Pindai Ulang untuk memeriksa rilis terbaru.')));
       if (tab === 'catalog') {

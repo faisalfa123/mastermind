@@ -1187,13 +1187,17 @@ nav#nav button.on {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 8px;
-  background: var(--warm);
-  color: #ffffff;
+  background: #10b981;
+  color: #062b1a;
+  border: 1px solid #34d399;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   margin-bottom: 8px;
+}
+.update-pill.pulse {
+  animation: pulse-update-glow 2s infinite ease-in-out;
 }
 
 .sandbox-pill {
