@@ -97,9 +97,126 @@ pub fn is_allowed_path(p: &str, jail: &str) -> bool {
 
 impl Batasan {
     pub fn parse(s: &str) -> Result<Self, Error> {
-        let b: Batasan = toml::from_str(s).map_err(|e| Error(e.to_string()))?;
+        let b = match toml::from_str::<Batasan>(s) {
+            Ok(b) => b,
+            Err(_) => Self::parse_flexible(s)?,
+        };
         b.validate()?;
         Ok(b)
+    }
+
+    fn parse_flexible(s: &str) -> Result<Self, Error> {
+        let val: toml::Value = toml::from_str(s).map_err(|e| Error(e.to_string()))?;
+        let name_or_id = val.get("app")
+            .and_then(|a| a.get("id").or_else(|| a.get("name")))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error("missing app.id or app.name".into()))?;
+        let id: String = name_or_id.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+
+        let repo = val.get("app")
+            .and_then(|a| a.get("repo"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let repo = if repo.contains('/') { repo.to_string() } else { format!("faisalfa123/{name_or_id}") };
+
+        let asset = val.get("app")
+            .and_then(|a| a.get("asset"))
+            .or_else(|| val.get("runtime").and_then(|r| r.get("binary")))
+            .and_then(|v| v.as_str())
+            .unwrap_or(&format!("{id}-linux-arm64"))
+            .to_string();
+
+        let language = val.get("app")
+            .and_then(|a| a.get("language"))
+            .or_else(|| val.get("build").and_then(|b| b.get("type")))
+            .and_then(|v| v.as_str())
+            .unwrap_or("go")
+            .to_string();
+
+        let description = val.get("app")
+            .and_then(|a| a.get("description").or_else(|| a.get("title")))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let port = val.get("run")
+            .and_then(|r| r.get("port"))
+            .or_else(|| val.get("runtime").and_then(|r| r.get("port")))
+            .and_then(|v| v.as_integer())
+            .unwrap_or(8080) as u16;
+
+        let priority = val.get("run")
+            .and_then(|r| r.get("priority"))
+            .and_then(|v| v.as_integer())
+            .unwrap_or(50) as u8;
+
+        let internal_port = val.get("run")
+            .and_then(|r| r.get("internal_port"))
+            .and_then(|v| v.as_integer())
+            .map(|v| v as u16);
+
+        let entry = val.get("run")
+            .and_then(|r| r.get("entry"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let memory_max_mb = if let Some(mb) = val.get("limits").and_then(|l| l.get("memory_max_mb")).and_then(|v| v.as_integer()) {
+            mb as u32
+        } else if let Some(mem_str) = val.get("limits").and_then(|l| l.get("memory_max")).and_then(|v| v.as_str()) {
+            let digits: String = mem_str.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse::<u32>().unwrap_or(64)
+        } else {
+            64
+        };
+
+        let cpu_quota_pct = if let Some(cpu) = val.get("limits").and_then(|l| l.get("cpu_quota_pct")).and_then(|v| v.as_integer()) {
+            cpu as u8
+        } else if let Some(cpu_str) = val.get("limits").and_then(|l| l.get("cpu_quota")).and_then(|v| v.as_str()) {
+            let digits: String = cpu_str.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse::<u8>().unwrap_or(50)
+        } else {
+            50
+        };
+
+        let tasks_max = val.get("limits")
+            .and_then(|l| l.get("tasks_max"))
+            .and_then(|v| v.as_integer())
+            .unwrap_or(64) as u32;
+
+        let paths_rw = val.get("permissions")
+            .and_then(|p| p.get("paths_rw"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_else(|| vec![format!("/var/lib/mastermind/{id}")]);
+
+        let paths_ro = val.get("permissions")
+            .and_then(|p| p.get("paths_ro"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let outbound = val.get("permissions")
+            .and_then(|p| p.get("outbound"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let tools = val.get("permissions")
+            .and_then(|p| p.get("tools"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let sandbox_tools = val.get("permissions")
+            .and_then(|p| p.get("sandbox_tools"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        Ok(Batasan {
+            app: App { id, repo, asset, language, description },
+            run: Run { port, args: vec![], priority, internal_port, entry },
+            limits: Limits { memory_max_mb, cpu_quota_pct, tasks_max },
+            permissions: Permissions { paths_rw, paths_ro, outbound, tools, sandbox_tools },
+        })
     }
 
     fn validate(&self) -> Result<(), Error> {
@@ -196,4 +313,31 @@ paths_ro = ["/srv/music"]
     #[test] fn bad_tool() { assert!(Batasan::parse(&format!("{OK}tools = [\"bash\"]\n")).is_err()); }
     #[test] fn bad_mem() { assert!(Batasan::parse(&OK.replace("= 96", "= 9000")).is_err()); }
     #[test] fn low_port() { assert!(Batasan::parse(&OK.replace("8080", "80")).is_err()); }
+    #[test] fn flexible_parse_dompetmungil_ok() {
+        let alt = r#"
+[app]
+name = "DompetMungil"
+description = "Aplikasi catatan keuangan"
+
+[runtime]
+binary = "keuangan-server-linux-aarch64"
+port = 8089
+
+[build]
+type = "go"
+
+[limits]
+memory_max = "64M"
+cpu_quota = "50%"
+
+[permissions]
+paths_rw = ["/var/lib/mastermind/dompetmungil"]
+"#;
+        let b = Batasan::parse(alt).expect("parse flexible batasan");
+        assert_eq!(b.app.id, "dompetmungil");
+        assert_eq!(b.app.language, "go");
+        assert_eq!(b.run.port, 8089);
+        assert_eq!(b.limits.memory_max_mb, 64);
+        assert_eq!(b.limits.cpu_quota_pct, 50);
+    }
 }

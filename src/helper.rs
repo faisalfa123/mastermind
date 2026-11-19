@@ -191,7 +191,7 @@ fn self_update(cfg: &Config) -> Result<String, String> {
             // Berikan jeda 2 detik agar response HTTP sukses sempat terkirim utuh ke browser client
             std::thread::sleep(std::time::Duration::from_millis(2000));
             let _ = std::process::Command::new("systemctl")
-                .args(["restart", "mastermind-web"])
+                .args(["restart", "mastermind-helper", "mastermind-web"])
                 .output();
         });
     }

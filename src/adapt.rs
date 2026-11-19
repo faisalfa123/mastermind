@@ -12,26 +12,37 @@ pub struct Findings {
     pub folder_paths: Vec<String>,
 }
 
-const CANDIDATES: [&str; 10] = [
+const CANDIDATES: [&str; 14] = [
     "install.sh", "install-tui.sh", "install-wizard.sh", "README.md",
     "deploy/install.sh", "systemd/app.service", "package.json",
-    "requirements.txt", "app.py", "index.html",
+    "requirements.txt", "app.py", "go.mod", "main.go", "Cargo.toml",
+    "batasan.toml", "index.html",
 ];
 
 /// Scan text blobs for port, whitelisted tools, webapp runtime, folder requests, and ExecStart args.
 pub fn analyze(texts: &[String]) -> Findings {
     let mut f = Findings { language: "go".into(), ..Default::default() };
+    let has_go = texts.iter().any(|t| t.contains("module ") || t.contains("package main") || t.contains("go build") || t.contains("type = \"go\""));
+    let has_rust = texts.iter().any(|t| t.contains("[package]") && t.contains("edition ="));
+    let has_node = texts.iter().any(|t| t.contains("\"dependencies\"") || (t.contains("\"scripts\"") && t.contains("node")));
+    let has_python = texts.iter().any(|t| t.contains("flask") || t.contains("fastapi") || t.contains("uvicorn") || t.contains("http.server"));
+
+    if has_go {
+        f.language = "go".into();
+    } else if has_rust {
+        f.language = "rust".into();
+    } else if has_node {
+        f.language = "node".into();
+        if f.entry.is_none() { f.entry = Some("index.js".into()); }
+    } else if has_python {
+        f.language = "python".into();
+        if f.entry.is_none() { f.entry = Some("app.py".into()); }
+    } else if texts.iter().any(|t| t.contains("<!doctype html") || t.contains("<!DOCTYPE html") || t.contains("<html")) {
+        f.language = "static".into();
+        if f.entry.is_none() { f.entry = Some("index.html".into()); }
+    }
+
     for t in texts {
-        if t.contains("\"dependencies\"") || t.contains("\"scripts\"") && t.contains("node") {
-            f.language = "node".into();
-            if f.entry.is_none() { f.entry = Some("index.js".into()); }
-        } else if t.contains("flask") || t.contains("fastapi") || t.contains("uvicorn") || t.contains("http.server") {
-            f.language = "python".into();
-            if f.entry.is_none() { f.entry = Some("app.py".into()); }
-        } else if (t.contains("<!doctype html") || t.contains("<!DOCTYPE html") || t.contains("<html")) && f.language == "go" {
-            f.language = "static".into();
-            if f.entry.is_none() { f.entry = Some("index.html".into()); }
-        }
 
         for line in t.lines() {
             let l = line.trim();

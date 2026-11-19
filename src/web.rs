@@ -799,7 +799,24 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     Err(reason) => {
                         // Adaptive WebApp fallback: inspect repo files even without .batasan.toml
                         let texts = crate::adapt::fetch_legacy(&repo);
-                        let findings = crate::adapt::analyze(&texts);
+                        let mut findings = crate::adapt::analyze(&texts);
+                        if findings.language == "static" {
+                            let has_arm64 = ureq::get(&format!("https://api.github.com/repos/{repo}/releases/latest"))
+                                .set("User-Agent", "mastermind")
+                                .timeout(std::time::Duration::from_secs(4))
+                                .call()
+                                .ok()
+                                .and_then(|r| r.into_json::<serde_json::Value>().ok())
+                                .and_then(|v| v["assets"].as_array().cloned())
+                                .map(|assets| assets.iter().any(|a| {
+                                    let n = a["name"].as_str().unwrap_or("").to_lowercase();
+                                    (n.contains("arm64") || n.contains("aarch64")) && !n.ends_with(".sha256") && !n.ends_with(".txt")
+                                }))
+                                .unwrap_or(false);
+                            if has_arm64 {
+                                findings.language = "go".into();
+                            }
+                        }
                         let name = repo.split('/').nth(1).unwrap_or("app");
                         let id: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
                         let desired_port = findings.port.unwrap_or(8080);

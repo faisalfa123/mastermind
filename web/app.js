@@ -131,7 +131,29 @@ function h(tag, attrs, ...kids) {
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
   return e;
 }
-function toast(m) { const t = $('#toast'); t.textContent = m; t.className = 'show'; clearTimeout(toast.t); toast.t = setTimeout(() => t.className = '', 4000); }
+function toast(m, type = 'info') {
+  const t = $('#toast');
+  if (!t) return;
+  const isErr = type === 'error' || /gagal|error|ditolak|mismatch|blocked|failed|salah|bentrok/i.test(String(m));
+  const isSucc = type === 'success' || /berhasil|success|valid|disalin|selesai|ok|aktif/i.test(String(m));
+  const icon = isErr ? '⚠️' : (isSucc ? '✅' : 'ℹ️');
+  const toneClass = isErr ? 'toast-error' : (isSucc ? 'toast-success' : 'toast-info');
+
+  t.className = `show ${toneClass}`;
+  t.replaceChildren(
+    h('span', { class: 'toast-icon', style: 'font-size:16px;line-height:1;user-select:none;' }, icon),
+    h('div', { class: 'toast-body', style: 'flex:1;word-break:break-word;' }, String(m)),
+    h('button', {
+      type: 'button',
+      class: 'toast-close',
+      'aria-label': 'Tutup notifikasi',
+      style: 'background:none;border:none;color:inherit;cursor:pointer;padding:0 0 0 8px;font-size:14px;opacity:0.8;font-weight:bold;line-height:1;',
+      onclick: () => { t.className = ''; }
+    }, '✕')
+  );
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { t.className = ''; }, 6000);
+}
 function levelUp(txt) { const d = h('div', { class: 'levelup' }, h('span', {}, txt)); document.body.append(d); setTimeout(() => d.remove(), 1300); }
 function loading() { view.replaceChildren(h('p', { class: 'loading' }, h('i'), h('i'), h('i'))); }
 

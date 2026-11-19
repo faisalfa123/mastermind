@@ -226,7 +226,10 @@ pub fn inspect_repo(cfg: &Config, repo: &str) -> Result<Entry, String> {
     }
 
     // Auto-draft batasan.toml when repo does not have one yet
-    let f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
+    let mut f = crate::adapt::analyze(&crate::adapt::fetch_legacy(repo));
+    if f.language == "static" && !bin_name.is_empty() {
+        f.language = "go".into();
+    }
     let toml = crate::adapt::draft(repo, &f, f.port.unwrap_or(8080), 96, &bin_name)?;
     build_entry(repo, &toml, &rel)
 }
