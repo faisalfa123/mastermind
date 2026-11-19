@@ -789,7 +789,8 @@ window.WorkerFactory = (function () {
     tCtx.fillStyle = '#ffffff';
     tCtx.font = 'bold 22px monospace';
     tCtx.textAlign = 'center';
-    tCtx.fillText(emp.name.slice(0, 14), 128, 38);
+    const displayName = String(emp.name || emp.id || 'APP');
+    tCtx.fillText(displayName.slice(0, 14), 128, 38);
 
     const textTexture = new THREE.CanvasTexture(textCanvas);
     const spriteMat = new THREE.SpriteMaterial({ map: textTexture, transparent: true });

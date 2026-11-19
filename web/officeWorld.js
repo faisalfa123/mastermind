@@ -125,10 +125,10 @@ window.OfficeWorld = (function () {
     // 2. Dinding Kayu Jati, Roster Gebyok Minimalis, & Jendela Bukit Terasering Bumiayu
     const teakMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.7 });
     const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x3d2514, roughness: 0.75 });
-    const windowGlassMat = new THREE.MeshPhysicalMaterial({
+    const windowGlassMat = new THREE.MeshStandardMaterial({
       color: 0xd1fae5,
       transparent: true,
-      opacity: 0.25,
+      opacity: 0.35,
       roughness: 0.1
     });
 
@@ -220,10 +220,10 @@ window.OfficeWorld = (function () {
     platform.receiveShadow = true;
     glassGroup.add(platform);
 
-    const hqGlassMat = new THREE.MeshPhysicalMaterial({
+    const hqGlassMat = new THREE.MeshStandardMaterial({
       color: 0xa7f3d0,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.32,
       roughness: 0.1
     });
 
@@ -369,7 +369,7 @@ window.OfficeWorld = (function () {
 
     const water = new THREE.Mesh(
       new THREE.CircleGeometry(2.85, 24),
-      new THREE.MeshPhysicalMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.65, roughness: 0.1 })
+      new THREE.MeshStandardMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.75, roughness: 0.1, metalness: 0.1 })
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.18;

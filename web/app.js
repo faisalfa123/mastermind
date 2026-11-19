@@ -2657,7 +2657,15 @@ async function render() {
           d.items.map(e => h('tr', {}, h('td', {}, new Date(e.ts * 1000).toLocaleString()), h('td', {}, e.actor), h('td', {}, e.action)))));
     }
     checkMastermindUpdatesQuietly();
-  } catch (e) { if (csrf) toast(e.message); }
+  } catch (e) {
+    console.error('Render error:', e);
+    if (csrf) toast(e.message);
+    view.replaceChildren(h('div', { class: 'card', style: 'margin-top: 20px;' },
+      h('h3', { style: 'color: var(--danger);' }, '⚠️ Gagal Memuat Tampilan'),
+      h('p', {}, 'Terjadi kesalahan saat merender tab: ' + e.message),
+      h('button', { type: 'button', class: 'ghost', onclick: () => { tab = 'apps'; render(); } }, 'Kembali ke APPS')
+    ));
+  }
 }
 
 async function start() {
