@@ -731,6 +731,39 @@ dialog input{margin-top:10px}
 }
 .pwa-install-pill:hover { opacity: 0.9; }
 
+.sys-update-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 20px;
+  background: var(--panel2, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  color: var(--ink, #f0f4f8);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.sys-update-pill:hover {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-color: transparent;
+  transform: translateY(-1px);
+}
+.sys-update-pill.has-update {
+  background: #10b981;
+  color: #052e16;
+  border-color: #34d399;
+  font-weight: 700;
+  animation: pulse-update-glow 2s infinite ease-in-out;
+}
+@keyframes pulse-update-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
 /* ==========================================================================
    SLIDE-OVER DRAWER (HUD KONTROL & REAL-TIME LOGS)
    ========================================================================== */

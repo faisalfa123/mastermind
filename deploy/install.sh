@@ -37,16 +37,42 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # UI Engine: Whiptail / Dialog / Text Fallback
 # ------------------------------------------------------------------------------
-HAS_WHIP=0
-if command -v whiptail >/dev/null 2>&1; then
-    HAS_WHIP=1
-    TUI="whiptail"
-elif command -v dialog >/dev/null 2>&1; then
-    HAS_WHIP=1
-    TUI="dialog"
+USE_CLI=0
+DO_UPDATE_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --cli|--text|-c) USE_CLI=1 ;;
+        --update|-u) DO_UPDATE_ONLY=1 ;;
+    esac
+done
+
+# Deteksi TTY interaktif: jangan pernah gunakan whiptail jika stdin dari pipe
+IS_TTY=0
+if [ -t 0 ] && [ -t 1 ]; then
+    IS_TTY=1
 fi
+
+HAS_WHIP=0
+if [ "$USE_CLI" -eq 0 ] && [ "$IS_TTY" -eq 1 ]; then
+    if command -v whiptail >/dev/null 2>&1; then
+        HAS_WHIP=1
+        TUI="whiptail"
+    elif command -v dialog >/dev/null 2>&1; then
+        HAS_WHIP=1
+        TUI="dialog"
+    fi
+fi
+
+tui_read_line() {
+    if [ -e /dev/tty ]; then
+        read -r "$1" < /dev/tty || eval "$1=''"
+    else
+        read -r "$1" || eval "$1=''"
+    fi
+}
 
 tui_msg() {
     title="$1"
@@ -55,7 +81,8 @@ tui_msg() {
         "$TUI" --title "$title" --msgbox "$text" 12 65
     else
         printf "\n${BOLD}=== %s ===${NC}\n%s\n\nTekan Enter untuk lanjut..." "$title" "$text"
-        read -r _
+        _dummy=""
+        tui_read_line _dummy
     fi
 }
 
@@ -70,13 +97,54 @@ tui_yesno() {
         fi
     else
         printf "${BOLD}%s (y/n) [y]: ${NC}" "$prompt"
-        read -r res
+        res=""
+        tui_read_line res
         case "${res:-y}" in
             [yY]*) return 0 ;;
             *) return 1 ;;
         esac
     fi
 }
+
+# ------------------------------------------------------------------------------
+# Quick Update Check jika Mastermind sudah terpasang
+# ------------------------------------------------------------------------------
+TARGET_BIN="$INSTALL_DIR/mastermind"
+if [ "$DO_UPDATE_ONLY" -eq 1 ] || { [ -f "$TARGET_BIN" ] && [ -f "$CONFIG_DIR/mastermind.toml" ]; }; then
+    do_quick_update=0
+    if [ "$DO_UPDATE_ONLY" -eq 0 ]; then
+        printf "\n${GREEN}🧠 Mastermind terdeteksi sudah terpasang di %s!${NC}\n" "$TARGET_BIN"
+        printf "${CYAN}Apakah Anda hanya ingin memperbarui (update) binary ke versi rilis terbaru tanpa mengubah konfigurasi akun/port? (Y/n) [Y]: ${NC}"
+        ans=""
+        tui_read_line ans
+        case "${ans:-Y}" in
+            [yY]*) do_quick_update=0 ;;
+            *) do_quick_update=1 ;;
+        esac
+    fi
+
+    if [ "$do_quick_update" -eq 0 ]; then
+        msg_info "1. Menghentikan service Mastermind..."
+        systemctl stop mastermind-web mastermind-helper 2>/dev/null || true
+
+        msg_info "2. Mengunduh binary arm64 rilis terbaru dari GitHub ($REPO)..."
+        TMP_UPDATE="/tmp/mastermind-update"
+        DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/mastermind-linux-arm64"
+        curl -fsSL "$DOWNLOAD_URL" -o "$TMP_UPDATE"
+        chmod +x "$TMP_UPDATE"
+
+        msg_info "3. Memasang binary baru ke $TARGET_BIN..."
+        install -m 0755 "$TMP_UPDATE" "$TARGET_BIN"
+        rm -f "$TMP_UPDATE"
+
+        msg_info "4. Me-restart service Mastermind..."
+        systemctl daemon-reload
+        systemctl start mastermind-helper mastermind-web
+
+        msg_ok "Pembaruan Mastermind berhasil diselesaikan!"
+        exit 0
+    fi
+fi
 
 # ------------------------------------------------------------------------------
 # Banner Sambutan

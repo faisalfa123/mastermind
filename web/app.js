@@ -510,11 +510,58 @@ function openMastermindSystemModal() {
             h('div', { class: 'drawer-metric-val' }, 'SYSTEMD')
           )
         ),
-        h('div', { style: 'background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px;' },
-          h('div', { style: 'font-weight: bold; font-size: 12px; margin-bottom: 4px;' }, 'Pembaruan Binary Mastermind Otomatis'),
-          h('div', { class: 'dim', style: 'font-size: 11px;' }, 'Mengunduh biner arm64 langsung dari GitHub faisalfa123/mastermind dan memperbarui daemon tanpa perlu login SSH.'),
+        h('div', { style: 'background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 8px;' },
+          h('div', { style: 'font-weight: bold; font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;' },
+            h('span', {}, '🌐'),
+            h('span', {}, 'Pembaruan Langsung dari Web')
+          ),
+          h('div', { class: 'dim', style: 'font-size: 11px; margin-bottom: 8px;' }, 'Terapkan pembaruan biner arm64 resmi dari GitHub langsung lewat browser tanpa perlu login SSH.'),
           infoStatus,
           actionRow
+        ),
+        h('div', { style: 'background: rgba(0, 0, 0, 0.22); border: 1px dashed var(--border); border-radius: 8px; padding: 14px; margin-top: 12px;' },
+          h('div', { style: 'font-weight: bold; font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;' },
+            h('span', {}, '💻 Perintah Terminal (SSH) Siap Pakai'),
+            h('span', { class: 'dim', style: 'font-size: 10px;' }, 'Bebas Stuck Whiptail')
+          ),
+          h('div', { class: 'dim', style: 'font-size: 11px; margin-bottom: 6px;' }, '1. Perintah Update Cepat Terminal (1 Baris non-interaktif):'),
+          h('div', { style: 'display: flex; gap: 6px; align-items: center;' },
+            h('input', {
+              type: 'text',
+              readonly: true,
+              value: 'curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/update.sh | sudo sh',
+              style: 'flex: 1; font-family: monospace; font-size: 10px; padding: 6px 8px; background: #0d1117; color: #58a6ff; border: 1px solid var(--border); border-radius: 4px;'
+            }),
+            h('button', {
+              type: 'button',
+              class: 'ghost',
+              style: 'padding: 6px 10px; font-size: 10px; white-space: nowrap;',
+              onclick: () => {
+                navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/update.sh | sudo sh')
+                  .then(() => toast('Perintah update terminal disalin!'))
+                  .catch(() => toast('Gagal menyalin'));
+              }
+            }, '📋 Salin')
+          ),
+          h('div', { class: 'dim', style: 'font-size: 11px; margin-top: 10px; margin-bottom: 6px;' }, '2. Perintah Pasang Baru (Fresh Install) Mode Teks CLI:'),
+          h('div', { style: 'display: flex; gap: 6px; align-items: center;' },
+            h('input', {
+              type: 'text',
+              readonly: true,
+              value: 'curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/install.sh | sudo sh -s -- --cli',
+              style: 'flex: 1; font-family: monospace; font-size: 10px; padding: 6px 8px; background: #0d1117; color: #7ee787; border: 1px solid var(--border); border-radius: 4px;'
+            }),
+            h('button', {
+              type: 'button',
+              class: 'ghost',
+              style: 'padding: 6px 10px; font-size: 10px; white-space: nowrap;',
+              onclick: () => {
+                navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/faisalfa123/mastermind/main/deploy/install.sh | sudo sh -s -- --cli')
+                  .then(() => toast('Perintah fresh install CLI disalin!'))
+                  .catch(() => toast('Gagal menyalin'));
+              }
+            }, '📋 Salin')
+          )
         )
       ),
       h('div', { class: 'wiz-footer' },
@@ -531,9 +578,20 @@ function openMastermindSystemModal() {
       activeVerVal.textContent = res.current_version;
       window.__mmVersion = res.current_version.replace(/^v/, '');
     }
+    const headerBtn = document.getElementById('system-update-btn');
+    const headerTxt = document.getElementById('sys-update-text');
+    if (headerBtn && headerTxt) {
+      if (res.has_update) {
+        headerBtn.classList.add('has-update');
+        headerTxt.textContent = `🚀 Update ke ${res.latest_version}`;
+      } else {
+        headerBtn.classList.remove('has-update');
+        headerTxt.textContent = `Mastermind ${res.current_version || ''}`;
+      }
+    }
     if (res.has_update) {
       infoStatus.innerHTML = `<span style="color:var(--good); font-weight:bold;">🚀 Rilis baru tersedia: ${res.latest_version}</span> (Aktif: ${res.current_version})`;
-      const updateBtn = h('button', { class: 'good', onclick: async () => {
+      const updateBtn = h('button', { class: 'good', style: 'padding: 8px 16px; font-weight: bold;', onclick: async () => {
         close();
         const code = await ask(`UPDATE MASTERMIND KE ${res.latest_version}?\nMasukkan password / jawaban keamanan:`, true);
         if (!code) return;
@@ -611,6 +669,22 @@ function openMastermindSystemModal() {
   }).catch(e => {
     infoStatus.textContent = 'Gagal memeriksa GitHub: ' + e.message;
   });
+}
+
+function checkMastermindUpdatesQuietly() {
+  api('self-update/status', 'GET').then(res => {
+    const btn = document.getElementById('system-update-btn');
+    const txt = document.getElementById('sys-update-text');
+    if (!btn || !txt) return;
+    if (res.has_update) {
+      btn.classList.add('has-update');
+      txt.textContent = `🚀 Update ke ${res.latest_version}`;
+      btn.title = `Rilis baru Mastermind ${res.latest_version} tersedia! Klik untuk update langsung di Web`;
+    } else {
+      btn.classList.remove('has-update');
+      txt.textContent = `Mastermind ${res.current_version || ''}`;
+    }
+  }).catch(() => {});
 }
 
 /* ==========================================================================
@@ -2480,12 +2554,14 @@ async function render() {
         h('table', {}, h('tr', {}, h('th', {}, 'WAKTU'), h('th', {}, 'AKTOR'), h('th', {}, 'AKSI')),
           d.items.map(e => h('tr', {}, h('td', {}, new Date(e.ts * 1000).toLocaleString()), h('td', {}, e.actor), h('td', {}, e.action)))));
     }
+    checkMastermindUpdatesQuietly();
   } catch (e) { if (csrf) toast(e.message); }
 }
 
 async function start() {
   await fetchAuthInfo();
   nav.hidden = false; loading(); render();
+  checkMastermindUpdatesQuietly();
   clearInterval(timer); timer = setInterval(() => {
     // Jangan refresh otomatis jika tab disembunyikan atau pengguna sedang mengedit konfigurasi
     if (!document.hidden && !activeEditingApp && (tab === 'apps' || tab === 'catalog')) {
