@@ -245,7 +245,7 @@ window.WorkerFactory = (function () {
   /**
    * Constructs an L-Shape Modern Workstation Desk
    */
-  function createLDesk(appName, status, cpuPct) {
+  function createLDesk(appName, status, cpuPct, category) {
     const desk = new THREE.Group();
 
     // Main desk surface
@@ -324,6 +324,176 @@ window.WorkerFactory = (function () {
     }
     desk.add(steamGroup);
 
+    // --- Specialized Archetype Desk Equipment ---
+    const deskCat = (category || '').toLowerCase();
+    if (deskCat === 'audio') {
+      // Audio / DJ Desk: DJ Turntable / Mixer console + Mini Studio Monitor Speakers
+      const djGroup = new THREE.Group();
+      djGroup.position.set(0.88, 0.76, 0.28);
+
+      // DJ Mixer Console Box
+      const consoleGeo = new THREE.BoxGeometry(0.52, 0.04, 0.38);
+      const consoleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.6, roughness: 0.4 });
+      const consoleMesh = new THREE.Mesh(consoleGeo, consoleMat);
+      djGroup.add(consoleMesh);
+
+      // Turntable Platters (Jog Wheels)
+      const jogGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.02, 16);
+      const jogMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8, roughness: 0.2 });
+      const jogGoldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.7, roughness: 0.3 });
+      [-0.14, 0.14].forEach(jx => {
+        const jog = new THREE.Mesh(jogGeo, jogMat);
+        jog.position.set(jx, 0.03, 0.03);
+        djGroup.add(jog);
+        const centerPin = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.03, 8), jogGoldMat);
+        centerPin.position.set(jx, 0.035, 0.03);
+        djGroup.add(centerPin);
+      });
+
+      // Volume faders / EQ knobs
+      for (let k = 0; k < 3; k++) {
+        const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.02, 8), new THREE.MeshBasicMaterial({ color: k === 1 ? 0xef4444 : 0x10b981 }));
+        knob.position.set(0, 0.03, -0.1 + k * 0.08);
+        djGroup.add(knob);
+      }
+
+      // Studio Monitor Speakers on left & right wing
+      [-0.7, 0.7].forEach(sx => {
+        const spkGeo = new THREE.BoxGeometry(0.18, 0.28, 0.16);
+        const spkMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.7 });
+        const spk = new THREE.Mesh(spkGeo, spkMat);
+        spk.position.set(sx > 0 ? 1.25 : -0.65, 0.9, sx > 0 ? 0.4 : -0.2);
+        spk.rotation.y = sx > 0 ? -0.4 : 0.4;
+        spk.castShadow = true;
+        // Speaker cones
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.02, 12), new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 }));
+        cone.rotation.x = Math.PI / 2;
+        cone.position.set(0, -0.02, 0.09);
+        spk.add(cone);
+        djGroup.add(spk);
+      });
+      desk.add(djGroup);
+
+    } else if (deskCat === 'media') {
+      // Media / Photo Desk: DSLR Camera on Desk + Color Grading Palette & Stylus Tablet
+      const mediaGroup = new THREE.Group();
+      mediaGroup.position.set(0.88, 0.76, 0.28);
+
+      // Digital Drawing / Grading Tablet
+      const tabletGeo = new THREE.BoxGeometry(0.44, 0.02, 0.32);
+      const tabletMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.5 });
+      const tablet = new THREE.Mesh(tabletGeo, tabletMat);
+      mediaGroup.add(tablet);
+
+      // Color palette strip on tablet
+      const paletteColors = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0x8b5cf6];
+      paletteColors.forEach((col, pIdx) => {
+        const dot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 0.04), new THREE.MeshBasicMaterial({ color: col }));
+        dot.position.set(-0.16 + pIdx * 0.08, 0.015, -0.1);
+        tablet.add(dot);
+      });
+
+      // Stylus Pen
+      const stylus = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+      stylus.rotation.z = Math.PI / 3;
+      stylus.position.set(0.18, 0.02, 0.04);
+      mediaGroup.add(stylus);
+
+      // DSLR Camera with zoom lens
+      const camBody = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.09), new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 }));
+      camBody.position.set(0.68, 0.81, 0.55);
+      const camLens = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.035, 0.09, 12), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7 }));
+      camLens.rotation.x = Math.PI / 2;
+      camLens.position.set(0, 0, 0.08);
+      camBody.add(camLens);
+      desk.add(camBody);
+      desk.add(mediaGroup);
+
+    } else if (deskCat === 'financial') {
+      // Financial / Accounting Desk: Classic Abacus / Ledger Book + Kawaii Coin Stacks
+      const finGroup = new THREE.Group();
+      finGroup.position.set(0.88, 0.76, 0.28);
+
+      // Ledger Book (Open accounting journal)
+      const bookGeo = new THREE.BoxGeometry(0.38, 0.03, 0.28);
+      const bookMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.9 });
+      const book = new THREE.Mesh(bookGeo, bookMat);
+      finGroup.add(book);
+
+      // Book cover trim
+      const coverGeo = new THREE.BoxGeometry(0.40, 0.015, 0.30);
+      const cover = new THREE.Mesh(coverGeo, new THREE.MeshStandardMaterial({ color: 0x854d0e }));
+      cover.position.y = -0.015;
+      book.add(cover);
+
+      // Coin stacks (Gold & Bronze coins)
+      const coinGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.012, 12);
+      const coinGoldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.3 });
+      const coinCopperMat = new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.6, roughness: 0.4 });
+      [
+        { x: -0.15, z: 0.16, h: 4, mat: coinGoldMat },
+        { x: -0.06, z: 0.17, h: 6, mat: coinGoldMat },
+        { x: 0.12, z: 0.15, h: 3, mat: coinCopperMat }
+      ].forEach(stack => {
+        for (let c = 0; c < stack.h; c++) {
+          const coin = new THREE.Mesh(coinGeo, stack.mat);
+          coin.position.set(stack.x, 0.02 + c * 0.014, stack.z);
+          finGroup.add(coin);
+        }
+      });
+      desk.add(finGroup);
+
+    } else if (deskCat === 'web') {
+      // Web / Frontend Desk: UI Blueprint Sheet / Sketch Board & Coffee Cup
+      const webGroup = new THREE.Group();
+      webGroup.position.set(0.88, 0.76, 0.28);
+
+      // Wireframe Blueprint Paper
+      const paperGeo = new THREE.BoxGeometry(0.42, 0.01, 0.32);
+      const paperMat = new THREE.MeshStandardMaterial({ color: 0xe0f2fe, roughness: 0.8 });
+      const paper = new THREE.Mesh(paperGeo, paperMat);
+      webGroup.add(paper);
+
+      // Wireframe UI grid blocks on blueprint
+      [
+        { x: -0.1, z: -0.08, w: 0.16, d: 0.05, c: 0x0284c7 },
+        { x: 0.08, z: -0.08, w: 0.16, d: 0.05, c: 0x38bdf8 },
+        { x: -0.01, z: 0.04, w: 0.34, d: 0.14, c: 0x93c5fd }
+      ].forEach(box => {
+        const bMesh = new THREE.Mesh(new THREE.BoxGeometry(box.w, 0.012, box.d), new THREE.MeshBasicMaterial({ color: box.c }));
+        bMesh.position.set(box.x, 0.008, box.z);
+        paper.add(bMesh);
+      });
+      desk.add(webGroup);
+
+    } else {
+      // Database / Backend / System: Mini Server Rack tower with blinky status LEDs
+      const rackGroup = new THREE.Group();
+      rackGroup.position.set(1.15, 0.76, 0.32);
+
+      const rackGeo = new THREE.BoxGeometry(0.24, 0.44, 0.26);
+      const rackMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.7, roughness: 0.3 });
+      const rack = new THREE.Mesh(rackGeo, rackMat);
+      rack.position.y = 0.22;
+      rack.castShadow = true;
+      rackGroup.add(rack);
+
+      // Server bay slots & status LED lights
+      for (let s = 0; s < 4; s++) {
+        const bayGeo = new THREE.BoxGeometry(0.22, 0.06, 0.01);
+        const bay = new THREE.Mesh(bayGeo, new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+        bay.position.set(0, 0.12 - s * 0.08, 0.135);
+        rack.add(bay);
+
+        // Blinky green/cyan LEDs
+        const ledMat = new THREE.MeshBasicMaterial({ color: s === 2 ? 0x06b6d4 : 0x22c55e });
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), ledMat);
+        led.position.set(0.08, 0.12 - s * 0.08, 0.142);
+        rack.add(led);
+      }
+      desk.add(rackGroup);
+    }
+
     // Dynamic Canvas Monitor (miring 15° ke atas agar terbaca dari top-down)
     const screenData = createScreenTexture(appName, status, cpuPct);
     const screenMat = new THREE.MeshBasicMaterial({ map: screenData.texture });
@@ -390,12 +560,35 @@ window.WorkerFactory = (function () {
     const isMastermind = emp.isHQ === true;
     const scale = isMastermind ? 1.25 : 1.0;
 
+    // Categorized Clothing & Accessories Styling
+    const empCat = (emp.category || '').toLowerCase();
+
     // Body (Torso)
-    const bodyColor = isMastermind ? 0x0f172a : (emp.color || 0x3b82f6);
+    let bodyColor = isMastermind ? 0x0f172a : (emp.color || 0x3b82f6);
+    let legColor = 0x1e293b;
+    if (!isMastermind) {
+      if (empCat === 'audio') {
+        bodyColor = 0x18181b; // Musician bomber jacket (charcoal / dark street style)
+        legColor = 0x27272a;
+      } else if (empCat === 'media') {
+        bodyColor = 0x854d0e; // Creative flannel / warm studio amber
+        legColor = 0x1c1917;
+      } else if (empCat === 'financial') {
+        bodyColor = 0x047857; // Professional formal emerald / dark teal vest
+        legColor = 0x0f172a;
+      } else if (empCat === 'web') {
+        bodyColor = 0x0284c7; // Casual tech hoodie (vibrant ocean blue)
+        legColor = 0x1e293b;
+      } else {
+        bodyColor = 0x334155; // Tech engineer slate / indigo
+        legColor = 0x0f172a;
+      }
+    }
+
     const torsoMat = new THREE.MeshStandardMaterial({
       color: bodyColor,
-      roughness: 0.5,
-      metalness: isMastermind ? 0.3 : 0.0
+      roughness: 0.55,
+      metalness: isMastermind ? 0.3 : 0.05
     });
     const torsoGeo = new THREE.BoxGeometry(0.44 * scale, 0.52 * scale, 0.28 * scale);
     const torso = new THREE.Mesh(torsoGeo, torsoMat);
@@ -403,13 +596,38 @@ window.WorkerFactory = (function () {
     torso.castShadow = true;
     worker.add(torso);
 
-    // Neon trim for Mastermind executive suit
+    // Archetype Clothing Details (Jacket zipper / Flannel collar / Tie / Hoodie pouch)
     if (isMastermind) {
+      // Neon trim for Mastermind executive suit
       const trimGeo = new THREE.BoxGeometry(0.04, 0.48 * scale, 0.3 * scale);
       const trimMat = new THREE.MeshBasicMaterial({ color: 0x00f5d4 });
       const trim = new THREE.Mesh(trimGeo, trimMat);
       trim.position.set(0, 0.65 * scale, 0);
       worker.add(trim);
+    } else if (empCat === 'audio') {
+      // Streetwear musician zipper & gold chain accent
+      const zipMesh = new THREE.Mesh(new THREE.BoxGeometry(0.02 * scale, 0.44 * scale, 0.29 * scale), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+      zipMesh.position.set(0, 0.65 * scale, 0);
+      worker.add(zipMesh);
+    } else if (empCat === 'financial') {
+      // White shirt collar & golden necktie
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.18 * scale, 0.12 * scale, 0.29 * scale), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      collar.position.set(0, 0.82 * scale, 0);
+      worker.add(collar);
+      const tie = new THREE.Mesh(new THREE.BoxGeometry(0.06 * scale, 0.32 * scale, 0.3 * scale), new THREE.MeshStandardMaterial({ color: 0xd97706 }));
+      tie.position.set(0, 0.68 * scale, 0);
+      worker.add(tie);
+    } else if (empCat === 'web') {
+      // Front hoodie kangaroo pouch
+      const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.32 * scale, 0.16 * scale, 0.06 * scale), new THREE.MeshStandardMaterial({ color: 0x0369a1 }));
+      pouch.position.set(0, 0.56 * scale, 0.13 * scale);
+      worker.add(pouch);
+    } else if (empCat === 'media') {
+      // Crossbody camera leather strap
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.04 * scale, 0.54 * scale, 0.3 * scale), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
+      strap.rotation.z = -0.45;
+      strap.position.set(0, 0.65 * scale, 0);
+      worker.add(strap);
     }
 
     // Chibi Head (Enlarged 1.25x for top-down camera clarity)
@@ -428,7 +646,7 @@ window.WorkerFactory = (function () {
       worker.add(eye);
     });
 
-    // Procedural Hair / Hats according to Category
+    // Procedural Hair & Thematic Accessories
     const hairColor = emp.hairColor || 0x1e293b;
     const hairMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.8 });
 
@@ -438,31 +656,89 @@ window.WorkerFactory = (function () {
       const hair = new THREE.Mesh(hairGeo, hairMat);
       hair.position.set(0, 1.34 * scale, 0);
       worker.add(hair);
-    } else if (emp.category === 'docker') {
-      // Docker cyan worker cap
-      const capGeo = new THREE.CylinderGeometry(headSize * 0.58, headSize * 0.62, 0.18 * scale, 12);
-      const capMat = new THREE.MeshStandardMaterial({ color: 0x0db7ed });
-      const cap = new THREE.Mesh(capGeo, capMat);
-      cap.position.set(0, 1.36 * scale, 0);
-      worker.add(cap);
-    } else if (emp.category === 'database') {
-      // Glowing tech visor / goggles
-      const visorGeo = new THREE.BoxGeometry(headSize * 0.95, 0.1 * scale, 0.1 * scale);
-      const visorMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-      const visor = new THREE.Mesh(visorGeo, visorMat);
-      visor.position.set(0, 1.16 * scale, 0.18 * scale);
-      worker.add(visor);
-    } else {
-      // Standard stylish voxel hairstyle + headset
+    } else if (empCat === 'audio') {
+      // Modern side-part hair + Large DJ Studio Headphones over ears
+      const hairGeo = new THREE.BoxGeometry(headSize * 1.05, 0.2 * scale, headSize * 1.05);
+      const hair = new THREE.Mesh(hairGeo, hairMat);
+      hair.position.set(0, 1.31 * scale, -0.02 * scale);
+      worker.add(hair);
+
+      // DJ Studio Headband
+      const hpBand = new THREE.Mesh(new THREE.TorusGeometry(0.25 * scale, 0.025 * scale, 8, 16, Math.PI), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5 }));
+      hpBand.position.set(0, 1.35 * scale, 0);
+      hpBand.rotation.x = -Math.PI / 2;
+      worker.add(hpBand);
+
+      // DJ Ear Cups (Padded leather cups on sides)
+      [-0.24 * scale, 0.24 * scale].forEach(hx => {
+        const earCup = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * scale, 0.09 * scale, 0.06 * scale, 12), new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.3 }));
+        earCup.rotation.z = Math.PI / 2;
+        earCup.position.set(hx, 1.12 * scale, 0);
+        worker.add(earCup);
+      });
+
+    } else if (empCat === 'media') {
+      // Artistic beret / flat cap + Thick-frame Editor Eyeglasses
+      const beret = new THREE.Mesh(new THREE.CylinderGeometry(headSize * 0.65, headSize * 0.52, 0.14 * scale, 12), new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 }));
+      beret.position.set(-0.04 * scale, 1.36 * scale, -0.02 * scale);
+      beret.rotation.z = -0.15;
+      worker.add(beret);
+
+      // Editor Glasses
+      [-0.1 * scale, 0.1 * scale].forEach(gx => {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.09 * scale, 0.07 * scale, 0.02), new THREE.MeshBasicMaterial({ color: 0x18181b }));
+        frame.position.set(gx, 1.15 * scale, 0.22 * scale);
+        worker.add(frame);
+      });
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.06 * scale, 0.015 * scale, 0.02), new THREE.MeshBasicMaterial({ color: 0x18181b }));
+      bridge.position.set(0, 1.16 * scale, 0.22 * scale);
+      worker.add(bridge);
+
+    } else if (empCat === 'financial') {
+      // Neat side-combed hair + Gold-frame reading spectacles
+      const hairGeo = new THREE.BoxGeometry(headSize * 1.04, 0.18 * scale, headSize * 1.04);
+      const hair = new THREE.Mesh(hairGeo, hairMat);
+      hair.position.set(0, 1.31 * scale, 0);
+      worker.add(hair);
+
+      // Gold reading glasses
+      [-0.09 * scale, 0.09 * scale].forEach(gx => {
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.04 * scale, 0.008 * scale, 6, 12), new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8 }));
+        rim.position.set(gx, 1.14 * scale, 0.22 * scale);
+        worker.add(rim);
+      });
+
+    } else if (empCat === 'web') {
+      // Messy dev hair + Casually worn backward tech baseball cap
       const hairGeo = new THREE.BoxGeometry(headSize * 1.05, 0.22 * scale, headSize * 1.05);
       const hair = new THREE.Mesh(hairGeo, hairMat);
       hair.position.set(0, 1.32 * scale, -0.02 * scale);
       worker.add(hair);
 
-      // Thin headset with mic
-      const bandGeo = new THREE.TorusGeometry(0.24 * scale, 0.02 * scale, 6, 16, Math.PI);
-      const bandMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-      const band = new THREE.Mesh(bandGeo, bandMat);
+      // Backward baseball cap
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(headSize * 0.55, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+      cap.position.set(0, 1.28 * scale, 0);
+      worker.add(cap);
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.24 * scale, 0.02 * scale, 0.16 * scale), new THREE.MeshStandardMaterial({ color: 0x0369a1 }));
+      visor.position.set(0, 1.29 * scale, -0.26 * scale);
+      worker.add(visor);
+
+    } else {
+      // Database / System Engineer: Tech Visor & Compact Communication Headset
+      const hairGeo = new THREE.BoxGeometry(headSize * 1.05, 0.22 * scale, headSize * 1.05);
+      const hair = new THREE.Mesh(hairGeo, hairMat);
+      hair.position.set(0, 1.32 * scale, -0.02 * scale);
+      worker.add(hair);
+
+      // Glowing tech visor / goggles
+      const visorGeo = new THREE.BoxGeometry(headSize * 0.95, 0.1 * scale, 0.1 * scale);
+      const visorMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4 });
+      const visor = new THREE.Mesh(visorGeo, visorMat);
+      visor.position.set(0, 1.16 * scale, 0.18 * scale);
+      worker.add(visor);
+
+      // Comms headset
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.24 * scale, 0.02 * scale, 6, 16, Math.PI), new THREE.MeshStandardMaterial({ color: 0x111111 }));
       band.position.set(0, 1.35 * scale, 0);
       band.rotation.x = -Math.PI / 2;
       worker.add(band);
@@ -480,7 +756,7 @@ window.WorkerFactory = (function () {
     // Articulated Legs (pivot at hip for walking cycle)
     const legGeo = new THREE.BoxGeometry(0.14 * scale, 0.38 * scale, 0.14 * scale);
     legGeo.translate(0, -0.19 * scale, 0);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+    const legMat = new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.7 });
 
     const leftLeg = new THREE.Mesh(legGeo, legMat);
     leftLeg.position.set(-0.12 * scale, 0.39 * scale, 0);

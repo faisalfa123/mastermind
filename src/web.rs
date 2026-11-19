@@ -593,13 +593,21 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 let mut notes = String::new();
                 let mut published_at = String::new();
 
-                let release_val = ureq::get("https://api.github.com/repos/faisalfa123/mastermind/releases/latest")
+                let mut req_builder = ureq::get("https://api.github.com/repos/faisalfa123/mastermind/releases/latest")
                     .set("User-Agent", "mastermind")
                     .set("Accept", "application/vnd.github+json")
-                    .timeout(std::time::Duration::from_secs(10))
-                    .call()
-                    .ok()
-                    .and_then(|r| r.into_json::<Value>().ok());
+                    .timeout(std::time::Duration::from_secs(12));
+
+                let token = app.cfg.github_token.clone().or_else(|| {
+                    app.store.lock().unwrap().state.github_token.clone()
+                });
+                if let Some(tok) = token {
+                    if !tok.trim().is_empty() {
+                        req_builder = req_builder.set("Authorization", &format!("Bearer {}", tok.trim()));
+                    }
+                }
+
+                let release_val = req_builder.call().ok().and_then(|r| r.into_json::<Value>().ok());
 
                 if let Some(rel) = release_val {
                     if let Some(tag) = rel["tag_name"].as_str() {

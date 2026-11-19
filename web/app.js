@@ -1780,6 +1780,16 @@ function openSlideDrawer(emp, onActionTriggered) {
         onclick: closeSlideDrawer
       }, `Buka HTTP :${emp.port} ↗`));
     }
+  } else {
+    // Tombol aksi khusus Bos Kernel Mastermind HQ
+    actionButtons.push(h('button', {
+      class: 'good',
+      style: 'padding: 6px 14px; font-weight: bold;',
+      onclick: () => {
+        closeSlideDrawer();
+        openMastermindSystemModal();
+      }
+    }, '⚡ Sistem & Update Mastermind'));
   }
 
   drawer = h('div', { id: 'slide-drawer', class: 'slide-drawer' },
@@ -1825,11 +1835,12 @@ function openSlideDrawer(emp, onActionTriggered) {
   async function loadLogs() {
     logBox.textContent = 'Mengambil log service...';
     try {
-      const res = await api(`apps/${emp.id}/logs`, 'GET');
+      const endpoint = emp.isHQ ? 'apps/mastermind/logs' : `apps/${emp.id}/logs`;
+      const res = await api(endpoint, 'GET').catch(() => ({ logs: 'Mastermind Core Daemon berjalan optimal.' }));
       logBox.textContent = res.logs || 'Belum ada catatan log terbaru.';
       logBox.scrollTop = logBox.scrollHeight;
     } catch (e) {
-      logBox.textContent = 'Gagal memuat log: ' + e.message;
+      logBox.textContent = emp.isHQ ? 'Mastermind Core Daemon berjalan optimal.' : ('Gagal memuat log: ' + e.message);
     }
   }
 
@@ -2010,10 +2021,21 @@ async function renderCity() {
     const dLoc = deskLocations[idx % deskLocations.length];
     const isAct = app.status === 'active';
     const cpuPct = app.cpu_pct != null ? app.cpu_pct : (isAct ? 18.0 + (idx * 5) % 30 : 0);
-    const cat = app.source === 'docker' ? 'docker' : (app.id.includes('db') || app.id.includes('sql') ? 'database' : 'web');
+    // Determine archetype category based on app id & description
+    const idLower = (app.id || '').toLowerCase();
+    let cat = 'web';
+    if (idLower.includes('senandung') || idLower.includes('music') || idLower.includes('audio') || idLower.includes('radio') || idLower.includes('spotify') || idLower.includes('song')) {
+      cat = 'audio';
+    } else if (idLower.includes('kompic') || idLower.includes('immich') || idLower.includes('photo') || idLower.includes('media') || idLower.includes('gallery') || idLower.includes('video')) {
+      cat = 'media';
+    } else if (idLower.includes('dompet') || idLower.includes('uang') || idLower.includes('finance') || idLower.includes('kas') || idLower.includes('wallet') || idLower.includes('pay') || idLower.includes('money')) {
+      cat = 'financial';
+    } else if (app.source === 'docker' || idLower.includes('db') || idLower.includes('sql') || idLower.includes('redis') || idLower.includes('system') || idLower.includes('node') || idLower.includes('server')) {
+      cat = 'database';
+    }
 
-    // Create Dual-Monitor Teak L-Desk
-    const deskObj = window.WorkerFactory.createLDesk(app.id, app.status, cpuPct);
+    // Create Dual-Monitor Teak L-Desk with specialized equipment
+    const deskObj = window.WorkerFactory.createLDesk(app.id, app.status, cpuPct, cat);
     deskObj.root.position.set(dLoc.x, 0, dLoc.z);
     scene.add(deskObj.root);
 
@@ -2373,16 +2395,68 @@ async function renderCity() {
               emp.worker3D.head.rotation.y = Math.sin(tick * 0.8) * 0.18;
               if (emp.chairObj) emp.chairObj.seatGroup.position.x = (Math.random() - 0.5) * 0.03;
             } else if (cpu >= 5) {
-              // WORKING: menghadap monitor, mengetik, sesekali menoleh mengecek dual monitor
+              // WORKING: gerakan khusus sesuai arketipe aplikasi
               emp.worker3D.root.rotation.y = THREE.MathUtils.lerp(emp.worker3D.root.rotation.y, targetFacing, 0.2);
               const speed = tick * 0.5;
-              emp.worker3D.torso.rotation.x = 0.12;
-              emp.worker3D.leftArm.upperArm.rotation.x = -0.68 + Math.sin(speed) * 0.14;
-              emp.worker3D.rightArm.upperArm.rotation.x = -0.68 + Math.cos(speed) * 0.14;
-              emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
-              emp.worker3D.head.rotation.x = 0.15;
-              emp.worker3D.head.rotation.y = Math.sin(tick * 0.07 + emp.idx) * 0.28;
-              if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = Math.sin(tick * 0.04 + emp.idx) * 0.07;
+              const catType = emp.category || 'web';
+
+              if (catType === 'audio') {
+                // Audio / DJ: Satu tangan scratch turntable / atur fader, satu tangan pegang headphone di telinga, kepala mengangguk ikuti ketukan beat
+                const beat = tick * 0.45;
+                emp.worker3D.torso.rotation.x = 0.08 + Math.sin(beat) * 0.06;
+                // Head bobbing to beat
+                emp.worker3D.head.rotation.x = 0.2 + Math.abs(Math.sin(beat)) * 0.16;
+                emp.worker3D.head.rotation.y = Math.sin(beat * 0.5) * 0.12;
+                // Left arm holds headphone to ear
+                emp.worker3D.leftArm.upperArm.rotation.x = -1.35;
+                emp.worker3D.leftArm.upperArm.rotation.z = -0.45;
+                emp.worker3D.leftArm.forearmGroup.rotation.x = -1.2;
+                // Right arm scratches turntable
+                emp.worker3D.rightArm.upperArm.rotation.x = -0.85 + Math.sin(speed * 1.5) * 0.2;
+                emp.worker3D.rightArm.upperArm.rotation.z = 0.25;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = -0.4;
+                if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = Math.sin(beat * 0.5) * 0.1;
+
+              } else if (catType === 'media') {
+                // Media / Photo Editor: Tangan kanan menggores pen stylus di tablet, tangan kiri menekan shortcut keyboard
+                emp.worker3D.torso.rotation.x = 0.14;
+                emp.worker3D.head.rotation.x = 0.24;
+                emp.worker3D.head.rotation.y = Math.sin(tick * 0.08 + emp.idx) * 0.22;
+                // Right arm drawing with stylus
+                emp.worker3D.rightArm.upperArm.rotation.x = -0.72 + Math.sin(speed) * 0.12;
+                emp.worker3D.rightArm.upperArm.rotation.z = 0.22;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = -0.35 + Math.cos(speed) * 0.15;
+                // Left arm on keyboard shortcut
+                emp.worker3D.leftArm.upperArm.rotation.x = -0.65;
+                emp.worker3D.leftArm.upperArm.rotation.z = -0.15;
+                emp.worker3D.leftArm.forearmGroup.rotation.x = -0.2;
+                if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = Math.sin(tick * 0.04 + emp.idx) * 0.05;
+
+              } else if (catType === 'financial') {
+                // Financial: Menggeser koin / mencatat buku besar dengan tempo ritmis teliti
+                emp.worker3D.torso.rotation.x = 0.15;
+                emp.worker3D.head.rotation.x = 0.28;
+                emp.worker3D.head.rotation.y = Math.sin(tick * 0.05 + emp.idx) * 0.14;
+                // Hands moving across ledger / abacus
+                emp.worker3D.leftArm.upperArm.rotation.x = -0.6;
+                emp.worker3D.leftArm.forearmGroup.rotation.x = -0.3;
+                emp.worker3D.rightArm.upperArm.rotation.x = -0.7 + Math.sin(speed * 0.7) * 0.1;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = -0.4 + Math.cos(speed * 0.7) * 0.1;
+                if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = 0;
+
+              } else {
+                // Web & Database: Mengetik dual keyboard dan mengecek dual monitor
+                emp.worker3D.torso.rotation.x = 0.12;
+                emp.worker3D.leftArm.upperArm.rotation.x = -0.68 + Math.sin(speed) * 0.14;
+                emp.worker3D.leftArm.upperArm.rotation.z = 0;
+                emp.worker3D.leftArm.forearmGroup.rotation.x = 0;
+                emp.worker3D.rightArm.upperArm.rotation.x = -0.68 + Math.cos(speed) * 0.14;
+                emp.worker3D.rightArm.upperArm.rotation.z = 0;
+                emp.worker3D.rightArm.forearmGroup.rotation.x = 0;
+                emp.worker3D.head.rotation.x = 0.15;
+                emp.worker3D.head.rotation.y = Math.sin(tick * 0.07 + emp.idx) * 0.28;
+                if (emp.chairObj) emp.chairObj.seatGroup.rotation.y = Math.sin(tick * 0.04 + emp.idx) * 0.07;
+              }
             } else {
               // IDLE: aktivitas mikro dinamis (peregangan / jalan ke dispenser kopi)
               emp.idleTimer--;
@@ -2533,7 +2607,11 @@ async function render() {
       const updateCount = d.apps.filter(a => a.installed && a.update_available).length;
       const navAppsBtn = $('#nav-apps-btn');
       if (navAppsBtn) {
-        navAppsBtn.replaceChildren('APPS', updateCount > 0 ? h('span', { class: 'nav-badge', title: `${updateCount} aplikasi punya pembaruan` }, String(updateCount)) : null);
+        if (updateCount > 0) {
+          navAppsBtn.replaceChildren('APPS', h('span', { class: 'nav-badge', title: `${updateCount} aplikasi punya pembaruan` }, String(updateCount)));
+        } else {
+          navAppsBtn.replaceChildren('APPS');
+        }
       }
       const list = d.apps.filter(a => tab === 'apps' ? a.installed : !a.installed);
       const out = [await sysbar()];
