@@ -15,7 +15,7 @@
   let targetMouseY = -1000;
   let currentMode = document.documentElement.dataset.mode || 'day';
   let currentSeason = document.documentElement.dataset.season || 'kemarau';
-  let animMode = localStorage.getItem('mm-anim') || 'full';
+  let animMode = localStorage.getItem('mm-anim') || 'off'; // Default static for ultra-low CPU on Odroid C2
   let isVisible = true;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reducedMotion) animMode = 'off';

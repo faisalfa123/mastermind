@@ -173,17 +173,24 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
             let mut folder_paths = b.permissions.paths_rw.clone();
             folder_paths.extend(b.permissions.paths_ro.clone());
 
+            // Preserve custom configurations if the app was previously configured by the user
+            let final_port = prev_installed.as_ref().map(|p| p.port).unwrap_or(b.run.port);
+            let final_mem = prev_installed.as_ref().map(|p| p.memory_max_mb).unwrap_or(b.limits.memory_max_mb);
+            let final_cpu = prev_installed.as_ref().map(|p| p.cpu_quota_pct).unwrap_or(b.limits.cpu_quota_pct);
+            let final_prio = prev_installed.as_ref().map(|p| p.priority).unwrap_or(b.run.priority);
+            let final_autostart = prev_installed.as_ref().map(|p| p.autostart).unwrap_or(true);
+
             g.state.apps.insert(e.id.clone(), Installed {
                 version: e.version.clone(),
                 sha256: h,
                 installed_at: store::now(),
-                priority: b.run.priority,
+                priority: final_prio,
                 repo: e.repo.clone(),
                 verified,
-                port: b.run.port,
-                memory_max_mb: b.limits.memory_max_mb,
-                cpu_quota_pct: b.limits.cpu_quota_pct,
-                autostart: true,
+                port: final_port,
+                memory_max_mb: final_mem,
+                cpu_quota_pct: final_cpu,
+                autostart: final_autostart,
                 envs: prev_installed.as_ref().map(|p| p.envs.clone()).unwrap_or_default(),
                 extra_args: prev_installed.as_ref().map(|p| p.extra_args.clone()).unwrap_or_default(),
                 is_external: false,

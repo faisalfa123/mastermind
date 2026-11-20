@@ -235,7 +235,46 @@ function renderSeasonCalendarModal() {
   if (typeof dlg.showModal === 'function') dlg.showModal();
 }
 
+function initSettingsSidebar() {
+  const toggleBtn = $('#settings-sidebar-toggle');
+  const closeBtn = $('#settings-sidebar-close');
+  const sidebar = $('#settings-sidebar');
+  const backdrop = $('#settings-sidebar-backdrop');
+  if (!sidebar) return;
+
+  const openSidebar = () => {
+    sidebar.hidden = false;
+    if (backdrop) backdrop.hidden = false;
+    requestAnimationFrame(() => sidebar.classList.add('open'));
+  };
+
+  const closeSidebar = () => {
+    sidebar.classList.remove('open');
+    setTimeout(() => {
+      sidebar.hidden = true;
+      if (backdrop) backdrop.hidden = true;
+    }, 280);
+  };
+
+  if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+  if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+  if (backdrop) backdrop.addEventListener('click', closeSidebar);
+}
+
+function initLiveClock() {
+  const clockEl = $('#system-clock');
+  if (!clockEl) return;
+  const updateClock = () => {
+    const d = new Date();
+    clockEl.textContent = d.toLocaleTimeString('id-ID', { hour12: false });
+  };
+  updateClock();
+  setInterval(updateClock, 1000);
+}
+
 function initTheme() {
+  initSettingsSidebar();
+  initLiveClock();
   const savedMode = localStorage.getItem('mm-mode') || 'day';
   const savedSeason = localStorage.getItem('mm-season-pref') || 'auto';
   applyMode(savedMode);
@@ -265,7 +304,7 @@ function initTheme() {
 
   const animSel = $('#anim-select');
   if (animSel) {
-    animSel.value = localStorage.getItem('mm-anim') || 'full';
+    animSel.value = localStorage.getItem('mm-anim') || 'off';
     animSel.addEventListener('change', () => {
       if (window.MastermindScene) window.MastermindScene.setAnimMode(animSel.value);
       toast(animSel.options[animSel.selectedIndex].text);
@@ -1175,29 +1214,70 @@ function appCard(a) {
     ? h('span', { class: 'tag', title: `Port bawaan ${a.internal_port} bentrok, dialihkan otomatis ke ${a.port}` }, `Auto-Port :${a.port} (asal :${a.internal_port})`)
     : null;
 
-  const frontFace = h('div', { class: 'card flip-card-front' },
-    h('div', { style: 'display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;' },
-      h('h3', { style: 'margin: 0 0 4px;' }, a.id),
-      h('button', { type: 'button', class: 'ghost', style: 'padding: 4px 10px; font-size: 12px;', title: 'Ubah Konfigurasi', onclick: toggleFlip }, 'Edit')
+  // Bento Grid Mini Metric Bars
+  const memUsed = a.mem_mb != null ? a.mem_mb : (a.status === 'active' ? 24 : 0);
+  const memMax = a.memory_max_mb || 64;
+  const memPct = Math.min(100, Math.round((memUsed / memMax) * 100));
+  const cpuVal = a.cpu_pct != null ? a.cpu_pct : (a.status === 'active' ? 1.5 : 0);
+  const cpuMax = a.cpu_quota_pct || 30;
+  const cpuPct = Math.min(100, Math.round((cpuVal / cpuMax) * 100));
+
+  const memBarClass = memPct > 85 ? 'danger' : (memPct > 65 ? 'warn' : '');
+  const cpuBarClass = cpuPct > 85 ? 'danger' : (cpuPct > 65 ? 'warn' : '');
+
+  const bentoMetrics = h('div', { class: 'bento-metrics' },
+    h('div', { class: 'bento-metric-row' },
+      h('div', { class: 'bento-metric-labels' },
+        h('span', { class: 'bento-metric-name' }, 'RAM CGROUP'),
+        h('span', { class: 'bento-metric-val' }, `${memUsed} / ${memMax} MB (${memPct}%)`)
+      ),
+      h('div', { class: 'bento-progress-track' },
+        h('div', { class: `bento-progress-fill ${memBarClass}`, style: `width: ${memPct}%;` })
+      )
+    ),
+    h('div', { class: 'bento-metric-row' },
+      h('div', { class: 'bento-metric-labels' },
+        h('span', { class: 'bento-metric-name' }, 'CPU QUOTA'),
+        h('span', { class: 'bento-metric-val' }, `${cpuVal}% / ${cpuMax}%`)
+      ),
+      h('div', { class: 'bento-progress-track' },
+        h('div', { class: `bento-progress-fill ${cpuBarClass}`, style: `width: ${cpuPct}%;` })
+      )
+    )
+  );
+
+  // Bento Badges Footer
+  const bentoBadges = [
+    h('span', { class: 'bento-badge port', title: 'Port HTTP Network' }, appPortNum ? `:${appPortNum}` : 'NO-PORT'),
+    h('span', { class: 'bento-badge runtime', title: 'Bahasa / Runtime' }, (a.language || 'app').toUpperCase()),
+    warnBadge,
+    h('span', { class: 'bento-badge', title: 'Prioritas Nice' }, `PRIO ${a.priority || 50}`)
+  ];
+  if (sandboxTags) bentoBadges.push(sandboxTags);
+  if (folderTags) bentoBadges.push(folderTags);
+  if (portRedirectTag) bentoBadges.push(portRedirectTag);
+
+  const bentoFooterMeta = h('div', { class: 'bento-footer-meta' }, ...bentoBadges);
+
+  const frontFace = h('div', { class: 'card flip-card-front bento-card' },
+    h('div', { class: 'bento-header' },
+      h('div', { class: 'bento-title-group' },
+        h('span', { class: `bento-status-dot ${a.status === 'active' ? 'active' : 'inactive'}`, title: `Status: ${a.status.toUpperCase()}` }),
+        h('h3', { class: 'bento-app-name', title: a.id }, a.id)
+      ),
+      h('div', { class: 'bento-header-actions' },
+        h('button', { type: 'button', class: 'bento-mini-btn', onclick: () => showAppLogs(a.id), title: 'Lihat Live Journalctl Logs' }, 'LOGS'),
+        h('button', { type: 'button', class: 'bento-mini-btn', onclick: toggleFlip, title: 'Ubah Konfigurasi Port & Batasan' }, 'EDIT')
+      )
     ),
     updateBanner,
-    h('p', {}, a.description || a.repo),
-    h('p', {},
-      warnBadge,
-      h('span', { class: 'tag' }, 'PRIO ' + a.priority),
-      h('span', { class: 'tag' }, (a.language || 'app').toUpperCase()),
-      h('span', { class: 'tag' }, `${a.memory_max_mb}MB / ${a.cpu_quota_pct}% CPU`),
-      sandboxTags,
-      folderTags,
-      portRedirectTag
-    ),
-    warningsBox,
-    portBanner,
+    bentoMetrics,
     tabBar,
     tabStatusContent,
     tabLogsContent,
     tabDiagContent,
-    h('div', { class: 'row', style: 'flex-wrap: wrap; gap: 6px; margin-top: 14px;' }, ...frontActions)
+    bentoFooterMeta,
+    h('div', { class: 'bento-action-bar' }, ...frontActions)
   );
 
   // --- SISI BELAKANG (BACK FACE - FORM KONFIGURASI) ---
@@ -2639,7 +2719,7 @@ async function render() {
         ));
       }
       out.push(h('h2', {}, tab === 'apps' ? 'APLIKASI TERPASANG' : 'KATALOG TERSEDIA'));
-      out.push(list.length ? h('div', { class: 'grid' }, list.map(appCard)) : h('div', { class: 'card' }, h('p', { class: 'dim', style: 'margin:0;' }, tab === 'apps' ? 'Belum ada aplikasi terpasang. Buka tab KATALOG atau SITUS untuk memasang aplikasi pertama Anda.' : 'Semua aplikasi dari katalog sudah terpasang, atau tekan Pindai Ulang untuk memeriksa rilis terbaru.')));
+      out.push(list.length ? h('div', { class: 'bento-grid' }, list.map(appCard)) : h('div', { class: 'card' }, h('p', { class: 'dim', style: 'margin:0;' }, tab === 'apps' ? 'Belum ada aplikasi terpasang. Buka tab KATALOG atau SITUS untuk memasang aplikasi pertama Anda.' : 'Semua aplikasi dari katalog sudah terpasang, atau tekan Pindai Ulang untuk memeriksa rilis terbaru.')));
       if (tab === 'catalog') {
         out.push(h('div', { class: 'row', style: 'margin-top:12px;' }, h('button', { type: 'button', class: 'ghost', onclick: async () => { toast('Memindai GitHub...'); await api('refresh', 'POST').catch(e => toast(e.message)); render(); } }, 'Pindai Ulang Katalog')));
         if (d.unconfigured.length) out.push(h('h2', {}, 'REPO LAINNYA (TANPA BINARY ARM64)'), h('table', {}, d.unconfigured.map(u => h('tr', {}, h('td', {}, u.repo), h('td', {}, u.reason)))));
@@ -2712,6 +2792,8 @@ window.triggerPwaInstall = async () => {
 
 (async () => {
   initTheme();
+  initSettingsSidebar();
+  initLiveClock();
   initKodamaEyeTracking();
   initAdaptiveFpsEngine();
 

@@ -349,7 +349,7 @@ fn apps_json(app: &App, force: bool) -> Value {
         let mut latest_version = i.version.clone();
         let mut update_available = false;
         let mut description = "(aplikasi terkelola)".to_string();
-        if !i.repo.is_empty() {
+        if force && !i.repo.is_empty() {
             if let Ok(e) = discover::inspect_repo(&app.cfg, &i.repo) {
                 latest_version = e.version.clone();
                 if !e.description.is_empty() {

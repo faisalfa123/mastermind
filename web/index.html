@@ -12,7 +12,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=0.1.11">
 </head>
 <body>
 <canvas id="zen-canvas" aria-hidden="true"></canvas>
@@ -29,71 +29,128 @@
     </button>
     <div class="brand">
       <h1>MASTERMIND</h1>
-      <span class="sub-zen">BUMIAYU STUDIO MANAGER</span>
+      <span class="sub-zen">STUDIO MANAGER</span>
     </div>
   </div>
 
-  <div class="header-controls">
-    <button type="button" id="system-update-btn" class="sys-update-pill" onclick="openMastermindSystemModal()" title="Sistem &amp; Pembaruan Mastermind (Klik untuk Update langsung di Web atau salin Perintah Terminal)">
+  <div class="topbar-center">
+    <div class="server-status-pill" id="global-server-status" title="Status Koneksi Daemon Mastermind">
+      <span class="status-pulse-dot"></span>
+      <span class="status-label">HEALTHY</span>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <div class="system-clock-pill" id="system-clock" title="Jam Server / Waktu Lokal">--:--:--</div>
+    
+    <button type="button" id="system-update-btn" class="sys-update-pill" onclick="openMastermindSystemModal()" title="Sistem &amp; Pembaruan Mastermind">
       <span class="sys-update-icon">⚡</span>
       <span id="sys-update-text">Sistem &amp; Update</span>
     </button>
 
-    <button type="button" id="pwa-install-btn" class="pwa-install-pill" onclick="window.triggerPwaInstall()" title="Pasang ke Layar Utama HP" hidden>
-      <span>Pasang App</span>
+    <button type="button" id="settings-sidebar-toggle" class="sidebar-toggle-btn" aria-label="Buka Pengaturan" title="Pengaturan Studio &amp; Tampilan">
+      <span class="toggle-icon">⚙️</span>
+      <span class="toggle-text">Pengaturan</span>
     </button>
-
-    <button type="button" id="mode-toggle" class="mode-toggle-btn" aria-pressed="false" title="Ganti Mode Siang Ghibli dan Malam Lentera">
-      <span id="mode-toggle-label">Mode Siang</span>
-    </button>
-
-    <div class="theme-select-wrapper">
-      <label for="season-select" class="sr-only">Pilih Event Musim</label>
-      <select id="season-select" aria-label="Pilih Event Musim Indonesia dan Internasional">
-        <option value="auto">Musim: Otomatis</option>
-        <optgroup label="Event Indonesia">
-          <option value="ramadhan">Ramadhan &amp; Lebaran</option>
-          <option value="merdeka">17 Agustus (Merdeka)</option>
-          <option value="hujan">Musim Hujan</option>
-          <option value="kemarau">Musim Kemarau</option>
-        </optgroup>
-        <optgroup label="Musim Internasional">
-          <option value="sakura">Spring (Sakura)</option>
-          <option value="summer">Summer (Kunang-kunang)</option>
-          <option value="autumn">Autumn (Maple)</option>
-          <option value="winter">Winter (Natal &amp; Tahun Baru)</option>
-        </optgroup>
-      </select>
-    </div>
-
-    <button type="button" id="season-calendar-btn" class="season-pill-btn" title="Lihat Kalender Event Musim Indonesia &amp; Internasional">
-      <span id="season-pill-text">Kalender Musim</span>
-    </button>
-
-    <div class="theme-select-wrapper">
-      <label for="anim-select" class="sr-only">Mode Animasi Latar</label>
-      <select id="anim-select" aria-label="Mode Animasi Latar">
-        <option value="full">Anim: Penuh</option>
-        <option value="eco">Anim: Hemat</option>
-        <option value="off">Anim: Mati</option>
-      </select>
-    </div>
-
-    <span class="fps-badge" id="fps-badge" title="Mesin Render Fixed 24 FPS (Hemat RAM &amp; CPU Odroid C2)">24 FPS</span>
-
-    <nav id="nav" aria-label="Navigasi Utama" hidden>
-      <button type="button" data-tab="city">KANTOR 3D</button>
-      <button type="button" data-tab="apps" class="on" id="nav-apps-btn">APPS</button>
-      <button type="button" data-tab="import">IMPOR</button>
-      <button type="button" data-tab="catalog">KATALOG</button>
-      <button type="button" data-tab="sites">SITUS</button>
-      <button type="button" data-tab="creator">RACIK BATASAN</button>
-      <button type="button" data-tab="blacklist">BLACKLIST</button>
-      <button type="button" data-tab="audit">AUDIT</button>
-      <button type="button" id="logout" class="ghost">KELUAR</button>
-    </nav>
   </div>
 </header>
+
+<div class="main-nav-bar" id="main-nav-wrapper">
+  <nav id="nav" aria-label="Navigasi Utama" hidden>
+    <button type="button" data-tab="city" class="nav-tab-btn">🏛️ KANTOR 3D</button>
+    <button type="button" data-tab="apps" class="nav-tab-btn on" id="nav-apps-btn">📦 APPS</button>
+    <button type="button" data-tab="import" class="nav-tab-btn">📥 IMPOR</button>
+    <button type="button" data-tab="catalog" class="nav-tab-btn">📚 KATALOG</button>
+    <button type="button" data-tab="sites" class="nav-tab-btn">🌐 SITUS</button>
+    <button type="button" data-tab="creator" class="nav-tab-btn">🛠️ RACIK BATASAN</button>
+    <button type="button" data-tab="blacklist" class="nav-tab-btn">🔒 BLACKLIST</button>
+    <button type="button" data-tab="audit" class="nav-tab-btn">📜 AUDIT</button>
+  </nav>
+</div>
+
+<!-- Collapsible Settings Sidebar Backdrop & Drawer -->
+<div id="settings-sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+<aside id="settings-sidebar" class="settings-sidebar" aria-label="Sidebar Pengaturan" hidden>
+  <div class="sidebar-header">
+    <div class="sidebar-title">
+      <span class="sidebar-icon">⚙️</span>
+      <h3>PENGATURAN STUDIO</h3>
+    </div>
+    <button type="button" id="settings-sidebar-close" class="ghost close-btn" aria-label="Tutup Pengaturan">✕</button>
+  </div>
+
+  <div class="sidebar-body">
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">TEMA &amp; ATMOSFER</div>
+      <div class="sidebar-row">
+        <label for="mode-toggle">Mode Tampilan</label>
+        <button type="button" id="mode-toggle" class="mode-toggle-btn" aria-pressed="false" title="Ganti Mode Siang Ghibli dan Malam Lentera">
+          <span id="mode-toggle-label">Mode Siang</span>
+        </button>
+      </div>
+
+      <div class="sidebar-row">
+        <label for="season-select">Event Musim</label>
+        <div class="theme-select-wrapper">
+          <select id="season-select" aria-label="Pilih Event Musim Indonesia dan Internasional">
+            <option value="auto">Musim: Otomatis</option>
+            <optgroup label="Event Indonesia">
+              <option value="ramadhan">Ramadhan &amp; Lebaran</option>
+              <option value="merdeka">17 Agustus (Merdeka)</option>
+              <option value="hujan">Musim Hujan</option>
+              <option value="kemarau">Musim Kemarau</option>
+            </optgroup>
+            <optgroup label="Musim Internasional">
+              <option value="sakura">Spring (Sakura)</option>
+              <option value="summer">Summer (Kunang-kunang)</option>
+              <option value="autumn">Autumn (Maple)</option>
+              <option value="winter">Winter (Natal &amp; Tahun Baru)</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="sidebar-row">
+        <span>Kalender Detail</span>
+        <button type="button" id="season-calendar-btn" class="season-pill-btn" title="Lihat Kalender Event Musim Indonesia &amp; Internasional">
+          <span id="season-pill-text">Kalender Musim</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">KINERJA &amp; EFISIENSI (ODROID/STB)</div>
+      <div class="sidebar-row">
+        <label for="anim-select">Animasi Latar</label>
+        <div class="theme-select-wrapper">
+          <select id="anim-select" aria-label="Mode Animasi Latar">
+            <option value="off">Animasi: Mati (Statis Hemat Daya)</option>
+            <option value="eco">Animasi: Eco (12 FPS)</option>
+            <option value="full">Animasi: Penuh (24 FPS)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sidebar-row">
+        <span>Mesin Render</span>
+        <span class="fps-badge" id="fps-badge" title="Mesin Render Fixed 24 FPS (Hemat RAM &amp; CPU Odroid C2)">24 FPS FIXED</span>
+      </div>
+    </div>
+
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">AKSES &amp; APLIKASI</div>
+      <div class="sidebar-row">
+        <span>Aplikasi Layar Utama</span>
+        <button type="button" id="pwa-install-btn" class="pwa-install-pill" onclick="window.triggerPwaInstall()" title="Pasang ke Layar Utama HP">
+          <span>📱 Pasang App PWA</span>
+        </button>
+      </div>
+      <div class="sidebar-row" style="margin-top: 14px;">
+        <button type="button" id="logout" class="danger" style="width: 100%; justify-content: center; padding: 10px;">KELUAR DARI MASTERMIND</button>
+      </div>
+    </div>
+  </div>
+</aside>
 
 <div id="offline" class="banner" hidden>KONEKSI TERPUTUS: Menampilkan data cache terakhir (hanya baca)</div>
 <main id="view"></main>
@@ -128,9 +185,9 @@
 
 <script src="/three.min.js"></script>
 <script src="/OrbitControls.js"></script>
-<script src="/workerFactory.js?v=0.1.10"></script>
-<script src="/officeWorld.js?v=0.1.10"></script>
-<script src="/scene.js?v=0.1.10"></script>
-<script src="/app.js?v=0.1.10"></script>
+<script src="/workerFactory.js?v=0.1.11"></script>
+<script src="/officeWorld.js?v=0.1.11"></script>
+<script src="/scene.js?v=0.1.11"></script>
+<script src="/app.js?v=0.1.11"></script>
 </body>
 </html>

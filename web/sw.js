@@ -1,5 +1,5 @@
 // Service worker: cache the app shell only. API responses are never cached here.
-const V = 'mm-v3';
+const V = 'mm-v4';
 const SHELL = [
   '/',
   '/style.css',
