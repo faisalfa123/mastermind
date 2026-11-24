@@ -1,11 +1,16 @@
 // Service worker: cache the app shell only. API responses are never cached here.
-const V = 'mm-v4';
+const V = 'mm-v5';
 const SHELL = [
   '/',
   '/style.css',
   '/app.js',
   '/three.min.js',
   '/OrbitControls.js',
+  '/workers/audio.js',
+  '/workers/financial.js',
+  '/workers/media.js',
+  '/workers/system.js',
+  '/workers/webWorker.js',
   '/workerFactory.js',
   '/officeWorld.js',
   '/scene.js',

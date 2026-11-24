@@ -1952,18 +1952,55 @@ async function renderCity() {
     }
   }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
 
+  // Camera Presets & Cinematic Transitions (Phase 3.3)
+  const cameraPresets = {
+    overview: { pos: new THREE.Vector3(0, 15.5 * zoomFactor, 16.5 * zoomFactor), target: new THREE.Vector3(0, 0.4, -1.0), label: '🏛️ Overview' },
+    entrance: { pos: new THREE.Vector3(-1.0, 4.2, 14.5), target: new THREE.Vector3(0, 1.2, 3.0), label: '🚪 Entrance' },
+    workspace: { pos: new THREE.Vector3(0, 7.5, 7.0), target: new THREE.Vector3(0, 0.8, 0), label: '💻 Workspace' },
+    server: { pos: new THREE.Vector3(0, 5.2, -4.5), target: new THREE.Vector3(0, 1.5, -9.2), label: '🏢 Mastermind HQ' },
+    lounge: { pos: new THREE.Vector3(-6.5, 4.5, 11.5), target: new THREE.Vector3(-10.0, 0.8, 8.2), label: '☕ Chill Lounge' }
+  };
+
+  let camTransition = null;
+  function switchCameraPreset(key) {
+    const preset = cameraPresets[key];
+    if (!preset) return;
+    playSfx('chime');
+    camTransition = {
+      startPos: camera.position.clone(),
+      endPos: preset.pos.clone(),
+      startTarget: controls ? controls.target.clone() : new THREE.Vector3(0, 0.4, -1.0),
+      endTarget: preset.target.clone(),
+      progress: 0,
+      duration: 36 // ~1.5s at 24 FPS
+    };
+    toast(`Kamera: ${preset.label}`);
+    // Save camera preset state to client-side storage
+    try { localStorage.setItem('mm-cam-preset', key); } catch (_) {}
+  }
+
+  const camPillButtons = Object.entries(cameraPresets).map(([k, p]) => {
+    return h('button', {
+      type: 'button',
+      class: 'ghost',
+      style: { padding: '2px 7px', fontSize: '10px', borderRadius: '999px', cursor: 'pointer', whiteSpace: 'nowrap' },
+      onclick: () => switchCameraPreset(k)
+    }, p.label);
+  });
+
   // 1. Mode Transparan Tanpa Bingkai Khusus Tab KOTA (Menyatu dengan Matcha Forest)
   const container3D = h('div', { id: 'office3d-container', class: 'city-frameless-canvas' });
   const framelessStage = h('div', { class: 'city-frameless' },
     container3D,
     h('div', { class: 'city-floating-controls' },
-      h('div', { class: 'city-floating-pill' },
+      h('div', { class: 'city-floating-pill', style: { display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' } },
         h('span', { class: 'dot' }),
-        h('span', {}, 'Mastermind HQ • 24 FPS'),
-        sfxBtn
+        h('span', { style: { fontWeight: 'bold' } }, 'Sudut Kamera:'),
+        ...camPillButtons
       ),
       h('div', { class: 'city-floating-pill' },
-        '🖱️ Putar: Klik & Tarik • Zoom: Scroll • Klik Pekerja untuk Kontrol & Logs'
+        sfxBtn,
+        h('span', { style: { marginLeft: '8px' } }, '🖱️ Putar: Klik & Tarik • Zoom: Scroll • Klik Pekerja untuk Kontrol & Logs')
       )
     )
   );
@@ -2022,6 +2059,15 @@ async function renderCity() {
     controls.minDistance = 5;
     controls.maxDistance = 36;
     controls.target.set(0, 0.4, -1.0);
+
+    // Restore saved camera preset from client-side storage (IndexedDB / localStorage state saving)
+    try {
+      const savedPreset = localStorage.getItem('mm-cam-preset');
+      if (savedPreset && cameraPresets[savedPreset]) {
+        camera.position.copy(cameraPresets[savedPreset].pos);
+        controls.target.copy(cameraPresets[savedPreset].target);
+      }
+    } catch (_) {}
   }
 
   // Lighting
@@ -2237,6 +2283,19 @@ async function renderCity() {
     if (delta < THREE_INTERVAL) return;
     last3DFrame = now - (delta % THREE_INTERVAL);
     tick++;
+
+    // Camera Smooth Transition Interpolation (Preset Tweening)
+    if (camTransition) {
+      camTransition.progress += 1 / camTransition.duration;
+      const t = Math.min(1, camTransition.progress);
+      // Smooth easeInOutQuad curve
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      camera.position.lerpVectors(camTransition.startPos, camTransition.endPos, ease);
+      if (controls) {
+        controls.target.lerpVectors(camTransition.startTarget, camTransition.endTarget, ease);
+      }
+      if (t >= 1) camTransition = null;
+    }
 
     if (controls) controls.update();
 
@@ -2585,6 +2644,25 @@ async function renderCity() {
       // Spin Plumbob
       if (emp.worker3D.plumbob) {
         emp.worker3D.plumbob.rotation.y += 0.06;
+      }
+
+      // Gamified Resource Updates on Desk:
+      if (emp.deskObj) {
+        // RAM: Paper stack height (1 sheet per 16MB up to 8 sheets)
+        if (emp.deskObj.paperSheets && Array.isArray(emp.deskObj.paperSheets)) {
+          const visibleCount = Math.min(8, Math.max(1, Math.round((emp.mem_mb || 32) / 16)));
+          emp.deskObj.paperSheets.forEach((sheet, sIdx) => {
+            sheet.visible = sIdx < visibleCount;
+          });
+        }
+        // CPU: Heat glow pulse if cpu > 65%
+        if (emp.deskObj.cpuHeatLight) {
+          if (emp.status === 'active' && cpu > 65) {
+            emp.deskObj.cpuHeatLight.intensity = 1.0 + Math.sin(tick * 0.4) * 0.8;
+          } else {
+            emp.deskObj.cpuHeatLight.intensity = 0;
+          }
+        }
       }
     });
 
