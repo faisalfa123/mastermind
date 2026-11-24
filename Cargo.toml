@@ -1,6 +1,6 @@
 [package]
 name = "mastermind"
-version = "0.3.0-beta"
+version = "0.2.2-canary"
 edition = "2021"
 description = "Ultra-light secure app manager for STB HG680P / Odroid C2 (DietPi)"
 license = "MIT"
