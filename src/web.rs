@@ -593,7 +593,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 let mut notes = String::new();
                 let mut published_at = String::new();
 
-                let mut req_builder = ureq::get("https://api.github.com/repos/faisalfa123/mastermind/releases/latest")
+                let mut req_builder = ureq::get("https://api.github.com/repos/faisalfa123/mastermind/releases?per_page=5")
                     .set("User-Agent", "mastermind")
                     .set("Accept", "application/vnd.github+json")
                     .timeout(std::time::Duration::from_secs(12));
@@ -607,15 +607,17 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     }
                 }
 
-                let release_val = req_builder.call().ok().and_then(|r| r.into_json::<Value>().ok());
+                let releases_list = req_builder.call().ok().and_then(|r| r.into_json::<Vec<Value>>().ok());
 
-                if let Some(rel) = release_val {
-                    if let Some(tag) = rel["tag_name"].as_str() {
-                        latest_ver = tag.to_string();
-                        has_update = normalize_version_tag(&latest_ver) != normalize_version_tag(&cur_ver);
+                if let Some(list) = releases_list {
+                    if let Some(rel) = list.first() {
+                        if let Some(tag) = rel["tag_name"].as_str() {
+                            latest_ver = tag.to_string();
+                            has_update = normalize_version_tag(&latest_ver) != normalize_version_tag(&cur_ver);
+                        }
+                        notes = rel["body"].as_str().unwrap_or("").to_string();
+                        published_at = rel["published_at"].as_str().unwrap_or("").to_string();
                     }
-                    notes = rel["body"].as_str().unwrap_or("").to_string();
-                    published_at = rel["published_at"].as_str().unwrap_or("").to_string();
                 }
 
                 json_resp(200, json!({
