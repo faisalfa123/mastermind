@@ -1684,6 +1684,26 @@ dialog::backdrop {
   color: #10b981;
   border-color: rgba(16, 185, 129, 0.3);
 }
+.bento-badge.keep-alive {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.08);
+}
+.bento-badge.keep-alive.active {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+}
+.bento-action-btn.keep-alive-btn {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+.bento-action-btn.keep-alive-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #e0f2fe;
+}
 
 /* Bento Bottom Action Controls */
 .bento-action-bar {

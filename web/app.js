@@ -1100,6 +1100,10 @@ function appCard(a) {
       h('span', { class: 'good' }, `/var/lib/mastermind/${a.id} (Terkunci ✓)`)
     ),
     h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
+      h('span', { class: 'dim' }, 'Keep-Alive (Watchdog):'),
+      h('span', { class: a.keep_alive ? 'good' : 'dim' }, a.keep_alive ? 'Aktif (Auto-Restart ✓)' : 'Non-Aktif')
+    ),
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
       h('span', { class: 'dim' }, 'Auto-Start saat Boot:'),
       h('span', { class: a.autostart !== false ? 'good' : 'dim' }, a.autostart !== false ? 'Aktif (Enabled)' : 'Non-Aktif')
     ),
@@ -1188,6 +1192,20 @@ function appCard(a) {
       }
     }, 'Rollback'));
   }
+  frontActions.push(h('button', {
+    type: 'button',
+    class: `bento-action-btn keep-alive-btn ${a.keep_alive ? 'active' : ''}`,
+    title: a.keep_alive ? 'Mode Keep-Alive Aktif (Aplikasi akan otomatis distart ulang jika mati). Klik untuk mematikan.' : 'Klik untuk mengaktifkan Keep-Alive (Watchdog otomatis memastikan aplikasi selalu hidup)',
+    onclick: async () => {
+      try {
+        const res = await api(`apps/${a.id}/keep-alive`, 'POST', { enabled: !a.keep_alive });
+        toast(res.message || 'Status Keep-Alive diperbarui');
+        render();
+      } catch (e) {
+        toast('GAGAL: ' + e.message);
+      }
+    }
+  }, a.keep_alive ? '🛡️ Keep-Alive: ON' : '🛡️ Keep-Alive'));
   frontActions.push(act('remove', 'Hapus', 'danger'));
   frontActions.push(h('button', { type: 'button', class: 'ghost', style: 'margin-left: auto;', onclick: toggleFlip }, 'Konfigurasi'));
 
@@ -1253,6 +1271,9 @@ function appCard(a) {
     warnBadge,
     h('span', { class: 'bento-badge', title: 'Prioritas Nice' }, `PRIO ${a.priority || 50}`)
   ];
+  if (a.keep_alive) {
+    bentoBadges.push(h('span', { class: 'bento-badge keep-alive active', title: 'Mode Keep-Alive Aktif: Mastermind akan selalu memastikan aplikasi ini berjalan' }, '🛡️ KEEP-ALIVE'));
+  }
   if (sandboxTags) bentoBadges.push(sandboxTags);
   if (folderTags) bentoBadges.push(folderTags);
   if (portRedirectTag) bentoBadges.push(portRedirectTag);
@@ -1294,6 +1315,12 @@ function appCard(a) {
     h('span', { class: 'switch-slider' })
   );
 
+  const chkKeepAlive = h('input', { type: 'checkbox', checked: a.keep_alive === true });
+  const keepAliveToggle = h('label', { class: 'switch-control' },
+    chkKeepAlive,
+    h('span', { class: 'switch-slider' })
+  );
+
   const portNotice = h('span', { style: 'font-size: 10px; color: var(--good); font-family: monospace;' }, 'Tersedia ✓');
   inpPort.oninput = () => {
     const p = parseInt(inpPort.value, 10);
@@ -1327,6 +1354,7 @@ function appCard(a) {
         cpu_quota_pct: parseInt(inpCpu.value, 10),
         priority: parseInt(inpPrio.value, 10),
         autostart: chkBoot.checked,
+        keep_alive: chkKeepAlive.checked,
       });
       toast(res.message || 'Konfigurasi berhasil diterapkan!');
       activeEditingApp = null;
@@ -1345,6 +1373,13 @@ function appCard(a) {
         h('div', { class: 'dim', style: 'font-size: 10px;' }, 'Jalankan otomatis saat server booting')
       ),
       bootToggle
+    ),
+    h('div', { style: 'background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;' },
+      h('div', {},
+        h('div', { style: 'font-size: 11px; font-weight: bold; color: #38bdf8;' }, '🛡️ Mode Keep-Alive (Watchdog)'),
+        h('div', { class: 'dim', style: 'font-size: 10px;' }, 'Pastikan aplikasi selalu aktif & restart otomatis jika berhenti')
+      ),
+      keepAliveToggle
     ),
     h('div', { style: 'background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px;' },
       h('div', { style: 'display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;' },
@@ -1860,6 +1895,23 @@ function openSlideDrawer(emp, onActionTriggered) {
         onclick: closeSlideDrawer
       }, `Buka HTTP :${emp.port} ↗`));
     }
+
+    actionButtons.push(h('button', {
+      class: `ghost ${emp.keep_alive ? 'good' : ''}`,
+      style: `padding: 6px 12px; font-size: 11px; ${emp.keep_alive ? 'border-color: #38bdf8; color: #38bdf8;' : ''}`,
+      title: emp.keep_alive ? 'Keep-Alive Aktif (klik untuk matikan)' : 'Aktifkan Keep-Alive (Watchdog)',
+      onclick: async () => {
+        try {
+          const res = await api(`apps/${emp.id}/keep-alive`, 'POST', { enabled: !emp.keep_alive });
+          emp.keep_alive = !emp.keep_alive;
+          toast(res.message || 'Status Keep-Alive diperbarui');
+          closeSlideDrawer();
+          render();
+        } catch (e) {
+          toast('GAGAL: ' + e.message);
+        }
+      }
+    }, emp.keep_alive ? '🛡️ Keep-Alive: ON' : '🛡️ Keep-Alive: OFF'));
   } else {
     // Tombol aksi khusus Bos Kernel Mastermind HQ
     actionButtons.push(h('button', {
@@ -2195,6 +2247,7 @@ async function renderCity() {
       cpu_pct: cpuPct,
       mem_mb: app.mem_mb || 48,
       category: cat,
+      keep_alive: app.keep_alive || false,
       deskObj,
       chairObj,
       color: idx % 3 === 0 ? 0x2563eb : (idx % 3 === 1 ? 0xd97706 : 0x059669),

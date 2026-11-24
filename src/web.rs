@@ -331,7 +331,8 @@ fn apps_json(app: &App, force: bool) -> Value {
             "port": effective_port, "internal_port": inst.and_then(|i| i.internal_port),
             "memory_max_mb": effective_mem, "cpu_quota_pct": effective_cpu,
             "language": inst.map(|i| i.language.as_str()).unwrap_or(&e.language),
-            "autostart": autostart, "installed": inst, "status": status, "verified": verified,
+            "autostart": autostart, "keep_alive": inst.map(|i| i.keep_alive).unwrap_or(false),
+            "installed": inst, "status": status, "verified": verified,
             "update_available": update_available, "has_rollback": has_rollback,
             "warnings": inst.map(|i| i.warnings.clone()).unwrap_or_default(),
             "sandbox_tools": inst.map(|i| i.sandbox_tools.clone()).unwrap_or_default(),
@@ -363,7 +364,8 @@ fn apps_json(app: &App, force: bool) -> Value {
             "description": description, "priority": i.priority,
             "port": effective_port, "internal_port": i.internal_port,
             "memory_max_mb": i.memory_max_mb, "cpu_quota_pct": i.cpu_quota_pct,
-            "language": i.language, "autostart": i.autostart, "installed": i, "status": status,
+            "language": i.language, "autostart": i.autostart, "keep_alive": i.keep_alive,
+            "installed": i, "status": status,
             "verified": i.verified, "update_available": update_available, "has_rollback": has_rollback,
             "warnings": i.warnings, "sandbox_tools": i.sandbox_tools, "folder_paths": i.folder_paths,
             "mem_mb": cgroup_mem_mb(id), "cpu_pct": cgroup_cpu_pct(id)
@@ -384,6 +386,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
             "/style.css" => Some(secure(Response::from_data(include_bytes!("../web/style.css").to_vec()).with_header(hdr("Content-Type", "text/css; charset=utf-8")), "no-cache")),
             "/app.js" => Some(secure(Response::from_data(include_bytes!("../web/app.js").to_vec()).with_header(hdr("Content-Type", "text/javascript; charset=utf-8")), "no-cache")),
             "/scene.js" => Some(asset(include_bytes!("../web/scene.js"), "text/javascript; charset=utf-8")),
+            "/workers/audio.js" => Some(asset(include_bytes!("../web/workers/audio.js"), "text/javascript; charset=utf-8")),
+            "/workers/financial.js" => Some(asset(include_bytes!("../web/workers/financial.js"), "text/javascript; charset=utf-8")),
+            "/workers/media.js" => Some(asset(include_bytes!("../web/workers/media.js"), "text/javascript; charset=utf-8")),
+            "/workers/system.js" => Some(asset(include_bytes!("../web/workers/system.js"), "text/javascript; charset=utf-8")),
+            "/workers/webWorker.js" => Some(asset(include_bytes!("../web/workers/webWorker.js"), "text/javascript; charset=utf-8")),
             "/workerFactory.js" => Some(asset(include_bytes!("../web/workerFactory.js"), "text/javascript; charset=utf-8")),
             "/officeWorld.js" => Some(asset(include_bytes!("../web/officeWorld.js"), "text/javascript; charset=utf-8")),
             "/three.min.js" => Some(asset(include_bytes!("../web/three.min.js"), "text/javascript; charset=utf-8")),
@@ -549,6 +556,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                     sandbox_tools: vec![],
                     folder_paths: vec![],
                     internal_port: None,
+                    keep_alive: false,
                 });
                 s.log("admin", &format!("import-app {name} (port {port})"));
                 s.save().ok();
@@ -983,6 +991,23 @@ fn handle(app: &Arc<App>, mut req: Request) {
                             Err(e) => err(500, &e),
                         }
                     }
+                    "keep-alive" => {
+                        let mut s = app.store.lock().unwrap();
+                        let target = match s.state.apps.get_mut(*id) {
+                            Some(a) => a,
+                            None => return err(404, "not installed"),
+                        };
+                        let new_val = b.get("enabled").and_then(|v| v.as_bool()).unwrap_or(!target.keep_alive);
+                        target.keep_alive = new_val;
+                        let msg = if new_val {
+                            format!("keep-alive AKTIF untuk {id}")
+                        } else {
+                            format!("keep-alive NON-AKTIF untuk {id}")
+                        };
+                        s.log("admin", &msg);
+                        s.save().ok();
+                        json_resp(200, json!({"ok": true, "keep_alive": new_val, "message": msg}))
+                    }
                     "config" => {
                         let pw = b["password"].as_str().unwrap_or("");
                         let admin_opt = app.store.lock().unwrap().state.admin.clone();
@@ -1001,6 +1026,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         let new_cpu = b["cpu_quota_pct"].as_u64().unwrap_or(current_app.cpu_quota_pct as u64) as u8;
                         let new_prio = b["priority"].as_u64().unwrap_or(current_app.priority as u64) as u8;
                         let new_autostart = b["autostart"].as_bool().unwrap_or(current_app.autostart);
+                        let new_keep_alive = b["keep_alive"].as_bool().unwrap_or(current_app.keep_alive);
 
                         if new_port > 0 && new_port != current_app.port && port_in_use(new_port) {
                             return err(409, &format!("port {new_port} sedang digunakan oleh service lain"));
@@ -1049,8 +1075,9 @@ tasks_max = 64
                                     app_record.cpu_quota_pct = new_cpu;
                                     app_record.priority = new_prio;
                                     app_record.autostart = new_autostart;
+                                    app_record.keep_alive = new_keep_alive;
                                 }
-                                s.log("admin", &format!("reconfigured {id} (port: {new_port}, ram: {new_mem}M)"));
+                                s.log("admin", &format!("reconfigured {id} (port: {new_port}, ram: {new_mem}M, keep_alive: {new_keep_alive})"));
                                 s.save().ok();
                                 json_resp(200, json!({"ok": true, "message": format!("Konfigurasi {id} berhasil diperbarui & service direstart")}))
                             }
@@ -1153,19 +1180,45 @@ fn watchdogs(app: Arc<App>) {
             crate::notify::send(&a.cfg, "Memori rendah", &format!("{id} dihentikan (sisa {avail} MB)"));
         }
     });
+    let verify_app = app.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(60));
-        let apps = app.store.lock().unwrap().state.apps.clone();
+        let apps = verify_app.store.lock().unwrap().state.apps.clone();
         for (id, i) in apps {
-            if let Ok(h) = ipc::call(&app.cfg.helper_socket, &format!("verify {id}")) {
+            if let Ok(h) = ipc::call(&verify_app.cfg.helper_socket, &format!("verify {id}")) {
                 if h != i.sha256 {
-                    let _ = ipc::call(&app.cfg.helper_socket, &format!("stop {id}"));
-                    app.store.lock().unwrap().log("system", &format!("TAMPER: {id} binary changed, stopped"));
-                    crate::notify::send(&app.cfg, "TAMPER terdeteksi", &format!("Binary {id} berubah! App dihentikan."));
+                    let _ = ipc::call(&verify_app.cfg.helper_socket, &format!("stop {id}"));
+                    verify_app.store.lock().unwrap().log("system", &format!("TAMPER: {id} binary changed, stopped"));
+                    crate::notify::send(&verify_app.cfg, "TAMPER terdeteksi", &format!("Binary {id} berubah! App dihentikan."));
                 }
             }
         }
         std::thread::sleep(Duration::from_secs(6 * 3600));
+    });
+    // Watchdog Keep-Alive: Menjaga aplikasi tetap aktif secara otomatis jika mode keep_alive diaktifkan
+    let ka = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(12));
+        let lockdown = ka.store.lock().unwrap().state.lockdown;
+        if lockdown { continue; }
+        let apps = ka.store.lock().unwrap().state.apps.clone();
+        for (id, i) in apps {
+            if i.keep_alive {
+                let status = ipc::call(&ka.cfg.helper_socket, &format!("status {id}")).unwrap_or_else(|_| "unknown".into());
+                if status != "active" {
+                    match ipc::call(&ka.cfg.helper_socket, &format!("start {id}")) {
+                        Ok(_) => {
+                            let msg = format!("watchdog: keep-alive auto-started {id} (sebelumnya: {status})");
+                            ka.store.lock().unwrap().log("system", &msg);
+                            crate::notify::send(&ka.cfg, "Keep-Alive Otomatis", &format!("Aplikasi {id} terdeteksi {status}, telah di-start ulang otomatis"));
+                        }
+                        Err(e) => {
+                            eprintln!("keep-alive failed to start {id}: {e}");
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 

@@ -78,6 +78,8 @@ pub struct Installed {
     pub folder_paths: Vec<String>,
     #[serde(default)]
     pub internal_port: Option<u16>,
+    #[serde(default)]
+    pub keep_alive: bool,
 }
 
 fn d_prio() -> u8 { 50 }

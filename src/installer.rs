@@ -179,6 +179,7 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
             let final_cpu = prev_installed.as_ref().map(|p| p.cpu_quota_pct).unwrap_or(b.limits.cpu_quota_pct);
             let final_prio = prev_installed.as_ref().map(|p| p.priority).unwrap_or(b.run.priority);
             let final_autostart = prev_installed.as_ref().map(|p| p.autostart).unwrap_or(true);
+            let final_keep_alive = prev_installed.as_ref().map(|p| p.keep_alive).unwrap_or(false);
 
             g.state.apps.insert(e.id.clone(), Installed {
                 version: e.version.clone(),
@@ -200,6 +201,7 @@ pub fn install_with_logger<F: Fn(&str)>(cfg: &Config, st: &std::sync::Mutex<Stor
                 sandbox_tools: b.permissions.tools.clone(),
                 folder_paths,
                 internal_port,
+                keep_alive: final_keep_alive,
             });
             g.log("admin", &format!("installed {} {}", e.id, e.version));
             g.save().ok();
