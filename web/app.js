@@ -2004,6 +2004,14 @@ async function renderCity() {
     }
   }, sfxEnabled ? '🔊 SFX: AKTIF' : '🔇 SFX: MATI');
 
+  // 1. Mode Transparan Tanpa Bingkai Khusus Tab KOTA (Menyatu dengan Matcha Forest)
+  const container3D = h('div', { id: 'office3d-container', class: 'city-frameless-canvas' });
+
+  const width = container3D.clientWidth || 960;
+  const height = container3D.clientHeight || 560;
+  const aspect = width / height;
+  const zoomFactor = aspect < 1.0 ? Math.max(1.0, 1.15 / aspect) : 1.0;
+
   // Camera Presets & Cinematic Transitions (Phase 3.3)
   const cameraPresets = {
     overview: { pos: new THREE.Vector3(0, 15.5 * zoomFactor, 16.5 * zoomFactor), target: new THREE.Vector3(0, 0.4, -1.0), label: '🏛️ Overview' },
@@ -2040,8 +2048,6 @@ async function renderCity() {
     }, p.label);
   });
 
-  // 1. Mode Transparan Tanpa Bingkai Khusus Tab KOTA (Menyatu dengan Matcha Forest)
-  const container3D = h('div', { id: 'office3d-container', class: 'city-frameless-canvas' });
   const framelessStage = h('div', { class: 'city-frameless' },
     container3D,
     h('div', { class: 'city-floating-controls' },
@@ -2064,17 +2070,12 @@ async function renderCity() {
     return;
   }
 
-  const width = container3D.clientWidth || 960;
-  const height = container3D.clientHeight || 560;
-
   // Transparent Scene Background (menyatu langsung dengan #zen-canvas Matcha Forest)
   const scene = new THREE.Scene();
   scene.background = null;
 
   // 3. Dekatkan Kamera Isometrik & Perbesar Proporsi Ruangan (Responsif Portrait Mobile)
-  const aspect = width / height;
   const camera = new THREE.PerspectiveCamera(38, aspect, 0.1, 1000);
-  const zoomFactor = aspect < 1.0 ? Math.max(1.0, 1.15 / aspect) : 1.0;
   camera.position.set(0, 15.5 * zoomFactor, 16.5 * zoomFactor);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
