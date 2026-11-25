@@ -82,6 +82,8 @@ ExecStart={exec_cmd}
 Environment=PORT={port}
 Environment=PATH={sandbox_bin}:/usr/local/bin:/usr/bin:/bin
 Environment=LD_LIBRARY_PATH={sandbox_lib}
+Environment=HOME=/var/lib/mastermind/{id}
+Environment=XDG_CACHE_HOME=/var/lib/mastermind/{id}/.cache
 DynamicUser=yes
 StateDirectory=mastermind/{id}
 WorkingDirectory={app_dir}

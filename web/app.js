@@ -429,6 +429,8 @@ function ask(msg, needTotp) {
 
 async function showLogin() {
   csrf = ''; nav.hidden = true; clearInterval(timer); localStorage.removeItem('mm-apps');
+  document.body.classList.add('is-login');
+  document.body.classList.remove('is-authenticated');
   await fetchAuthInfo();
   const pw = h('input', { type: 'password', autocomplete: 'current-password', maxlength: '256', 'aria-label': 'password' });
   const user = h('input', { autocomplete: 'username', maxlength: '64', 'aria-label': 'user' });
@@ -443,13 +445,32 @@ async function showLogin() {
     tfInput = h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6', placeholder: '123456', 'aria-label': 'kode 2FA' });
   }
 
-  const err = h('div', { class: 'err' });
+  const err = h('div', { class: 'err', role: 'alert' });
+  const clearErr = () => {
+    err.textContent = '';
+    [user, pw, tfInput].forEach(el => el.classList.remove('input-error'));
+  };
+  [user, pw, tfInput].forEach(el => el.addEventListener('input', clearErr));
+
   const go = async e => {
-    e.preventDefault(); err.textContent = '';
+    e.preventDefault(); clearErr();
+    if (!user.value.trim() || !pw.value || !tfInput.value.trim()) {
+      if (!user.value.trim()) user.classList.add('input-error');
+      if (!pw.value) pw.classList.add('input-error');
+      if (!tfInput.value.trim()) tfInput.classList.add('input-error');
+      err.textContent = '⚠ SEMUA KOLOM WAJIB DIISI';
+      return;
+    }
     try {
       const j = await api('login', 'POST', { user: user.value, password: pw.value, two_factor: tfInput.value.trim() });
-      csrf = j.csrf; pw.value = ''; tfInput.value = ''; start();
-    } catch (x) { err.textContent = x.message.toUpperCase(); }
+      csrf = j.csrf; pw.value = ''; tfInput.value = '';
+      document.body.classList.remove('is-login');
+      document.body.classList.add('is-authenticated');
+      start();
+    } catch (x) {
+      [user, pw, tfInput].forEach(el => el.classList.add('input-error'));
+      err.textContent = '⚠ ' + x.message.toUpperCase();
+    }
   };
 
   const kodamaLogo = h('div', { class: 'kodama-mascot' },
@@ -1984,7 +2005,38 @@ function openSlideDrawer(emp, onActionTriggered) {
   loadLogs();
 }
 
+let _cityScriptsLoaded = null;
+function ensureCityScripts() {
+  if (_cityScriptsLoaded) return _cityScriptsLoaded;
+  const scripts = [
+    '/three.min.js',
+    '/OrbitControls.js',
+    '/workers/audio.js?v=0.2.4',
+    '/workers/financial.js?v=0.2.4',
+    '/workers/media.js?v=0.2.4',
+    '/workers/system.js?v=0.2.4',
+    '/workers/webWorker.js?v=0.2.4',
+    '/workerFactory.js?v=0.2.4',
+    '/officeWorld.js?v=0.2.4',
+    '/scene.js?v=0.2.4',
+  ];
+  _cityScriptsLoaded = scripts.reduce((p, src) => p.then(() => new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error(`Gagal memuat ${src}`));
+    document.body.appendChild(s);
+  })), Promise.resolve());
+  return _cityScriptsLoaded;
+}
+
 async function renderCity() {
+  try {
+    await ensureCityScripts();
+  } catch (e) {
+    view.replaceChildren(h('div', { class: 'card' }, `Gagal memuat Kantor 3D: ${e.message}`));
+    return;
+  }
   if (cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
   if (threeRenderer) {
     try { threeRenderer.dispose(); } catch (_) {}

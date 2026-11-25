@@ -1,22 +1,55 @@
-/* Studio Ghibli Watercolor Dual-Mode Palette (Day: Totoro/Kiki, Night: Spirited Away Lantern) */
+/* Minimalist Modern Clean Dual-Mode Palette */
 :root, [data-mode="day"] {
-  --bg: #f4ede0;
-  --bg-card: #fffbf2;
-  --panel: #efe5d1;
-  --panel2: #e4d6bb;
-  --ink: #2a2118;
-  --dim: #5c4e3f;
-  --accent: #2d6a4f;
+  --bg: #f8fafc;
+  --bg-card: #ffffff;
+  --panel: #f1f5f9;
+  --panel2: #e2e8f0;
+  --ink: #0f172a;
+  --dim: #64748b;
+  --accent: #0f766e;
   --accent-ink: #ffffff;
-  --accent-soft: #dff0e6;
-  --highlight: #9c5a18;
-  --warm: #b5502a;
-  --danger: #a83232;
-  --danger-soft: #fde8e8;
-  --good: #256847;
-  --warn: #9a5b13;
-  --border: #d5c6ab;
-  --shadow: rgba(58, 43, 28, 0.14);
+  --accent-soft: #ccfbf1;
+  --highlight: #0284c7;
+  --warm: #d97706;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --good: #059669;
+  --warn: #d97706;
+  --border: #e2e8f0;
+  --shadow: rgba(15, 23, 42, 0.06);
+}
+
+/* Login-state isolation & post-login reveal animation */
+body.is-login .top,
+body.is-login .main-nav-bar,
+body.is-login .site-footer,
+body.is-login #zen-canvas {
+  display: none !important;
+}
+body.is-authenticated .top,
+body.is-authenticated .main-nav-bar {
+  animation: mmSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+body.is-authenticated #view {
+  animation: mmFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes mmSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes mmFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.input-error {
+  border-color: var(--danger) !important;
+  background-color: var(--danger-soft) !important;
+  animation: mmShake 0.3s ease-in-out;
+}
+@keyframes mmShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }
 
 [data-mode="night"] {
