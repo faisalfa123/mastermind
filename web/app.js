@@ -629,7 +629,10 @@ function openMastermindSystemModal() {
       }
     }
     if (res.has_update) {
-      infoStatus.innerHTML = `<span style="color:var(--good); font-weight:bold;">🚀 Rilis baru tersedia: ${res.latest_version}</span> (Aktif: ${res.current_version})`;
+      infoStatus.replaceChildren(
+        h('span', { style: 'color:var(--good); font-weight:bold;' }, `🚀 Rilis baru tersedia: ${res.latest_version}`),
+        ` (Aktif: ${res.current_version})`
+      );
       const updateBtn = h('button', { class: 'good', style: 'padding: 8px 16px; font-weight: bold;', onclick: async () => {
         close();
         const code = await ask(`UPDATE MASTERMIND KE ${res.latest_version}?\nMasukkan password / jawaban keamanan:`, true);
@@ -668,7 +671,9 @@ function openMastermindSystemModal() {
       } }, `⬆ Update ke ${res.latest_version}`);
       actionRow.replaceChildren(updateBtn);
     } else {
-      infoStatus.innerHTML = `<span style="color:var(--good);">✔ Mastermind versi ${res.current_version} sudah rilis paling baru.</span>`;
+      infoStatus.replaceChildren(
+        h('span', { style: 'color:var(--good);' }, `✔ Mastermind versi ${res.current_version} sudah rilis paling baru.`)
+      );
       const reinstallBtn = h('button', { class: 'ghost', onclick: async () => {
         close();
         const code = await ask(`PASANG ULANG MASTERMIND ${res.current_version}?\nMasukkan password / jawaban keamanan:`, true);
@@ -2099,6 +2104,10 @@ async function renderCity() {
     camera.updateProjectionMatrix();
     renderer.setSize(w, hVal);
   };
+  if (window._cityResizeHandler) {
+    window.removeEventListener('resize', window._cityResizeHandler);
+  }
+  window._cityResizeHandler = onResize;
   window.addEventListener('resize', onResize, { passive: true });
 
   // OrbitControls restricted to Top-Down perspective

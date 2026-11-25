@@ -200,7 +200,16 @@ impl App {
     }
 
     fn two_factor_ok(&self, resp: &str) -> bool {
-        self.admin_auth_ok(resp)
+        let trimmed = resp.trim();
+        if trimmed.is_empty() { return false; }
+        let st = self.store.lock().unwrap();
+        let is_totp = match &st.state.admin {
+            Some(a) => matches!(a.get_two_factor(), store::TwoFactor::Totp { .. }),
+            None => return false,
+        };
+        drop(st);
+        let step = self.two_factor_peek(trimmed);
+        self.two_factor_consume(is_totp, step)
     }
 
     fn catalog(&self, force: bool) -> (Vec<Entry>, Vec<Unconfigured>) {
@@ -752,9 +761,14 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 }
             }
             (Method::Post, ["apps", "adaptive-install"]) => {
+                if app.store.lock().unwrap().state.lockdown { return err(423, "lockdown active"); }
+                let _guard = match app.install_lock.try_lock() {
+                    Ok(g) => g,
+                    Err(_) => return err(409, "another install/update in progress"),
+                };
                 let b = read_json(&mut req);
                 let tf_code = b["totp"].as_str().or_else(|| b["two_factor"].as_str()).unwrap_or("");
-                if !app.two_factor_ok(tf_code) { return err(403, "Password atau kode 2FA salah"); }
+                if !app.two_factor_ok(tf_code) { return err(403, "Kode 2FA salah"); }
                 let repo = match discover::parse_repo(b["repo"].as_str().unwrap_or("")) {
                     Ok(r) => r,
                     Err(e) => return err(400, &e),
@@ -764,6 +778,9 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 let version = b["version"].as_str().unwrap_or("adaptive").trim().to_string();
                 if toml_str.is_empty() || asset_url.is_empty() {
                     return err(400, "batasan_toml dan asset_url wajib diisi");
+                }
+                if !asset_url.starts_with("https://") || asset_url.contains("127.0.0.1") || asset_url.contains("localhost") || asset_url.contains("169.254.") {
+                    return err(400, "asset_url harus menggunakan HTTPS eksternal yang valid");
                 }
                 let parsed = match crate::batasan::Batasan::parse(&toml_str) {
                     Ok(p) => p,
@@ -1039,12 +1056,13 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         let asset_name = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.asset.as_str()).unwrap_or(*id);
                         let lang = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.language.as_str()).unwrap_or("go");
 
+                        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "").replace('\r', "");
                         let new_toml = format!(
 "[app]
-id = \"{id}\"
-repo = \"{repo_name}\"
-asset = \"{asset_name}\"
-language = \"{lang}\"
+id = \"{}\"
+repo = \"{}\"
+asset = \"{}\"
+language = \"{}\"
 
 [run]
 port = {new_port}
@@ -1054,7 +1072,9 @@ priority = {new_prio}
 memory_max_mb = {new_mem}
 cpu_quota_pct = {new_cpu}
 tasks_max = 64
-"                       );
+",
+                            esc(id), esc(repo_name), esc(asset_name), esc(lang)
+                        );
 
                         let st_dir = std::path::Path::new(&app.cfg.data_dir).join("staging").join(*id);
                         let _ = std::fs::create_dir_all(&st_dir);
