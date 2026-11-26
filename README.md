@@ -1,5 +1,7 @@
 # 🧠 Mastermind Core Engine v2.0.1
 
+![Preview Mastermind v2.0.1](docs/preview.png)
+
 **Native Systemd Orchestrator & API Provider** ultra-ringan (Rust, single static binary) untuk **STB HG680P / Odroid C2** di **DietPi / Debian**.
 
 Mastermind v2.0.1 mengelola daur hidup aplikasi WebApps GUI secara native melalui `systemd` (`/etc/systemd/system/bumiayu-*.service`) dengan *Shared Environment* (tanpa sandboxing kaku), sehingga aplikasi seperti **Senandung** dapat langsung memanggil binary global OS seperti `yt-dlp` dan `ffmpeg`.
