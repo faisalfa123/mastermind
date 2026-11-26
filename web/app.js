@@ -2845,12 +2845,113 @@ async function renderImport() {
   }
 }
 
+async function renderHome() {
+  const [sys, appsRes] = await Promise.all([
+    api('system').catch(() => null),
+    api('apps').catch(() => ({ apps: [] })),
+  ]);
+  const usedRam = sys ? (sys.mem_total_mb - sys.mem_avail_mb) : 0;
+  const ramPct = sys && sys.mem_total_mb ? Math.round((usedRam * 100) / sys.mem_total_mb) : 0;
+  const cpuPct = sys ? Math.min(100, Math.round((sys.load || 0) * 25)) : 0;
+  const temp = sys && sys.temp_c != null ? `${sys.temp_c}°C` : '-';
+  const uptime = sys ? `${Math.floor((sys.uptime_s || 0) / 3600)}j` : '-';
+  const apps = (appsRes && appsRes.apps) || [];
+  const activeCount = apps.filter(a => a.running).length;
+
+  const metrics = h('div', { class: 'metrics-hero' },
+    h('div', { class: 'metric-tile' },
+      h('div', { class: 'm-label' }, 'CPU LOAD'),
+      h('div', { class: 'm-val' }, `${cpuPct}%`),
+      h('div', { class: 'm-sub' }, `Load: ${sys ? sys.load : '-'}`)),
+    h('div', { class: 'metric-tile' },
+      h('div', { class: 'm-label' }, 'MEMORI'),
+      h('div', { class: 'm-val' }, `${ramPct}%`),
+      h('div', { class: 'm-sub' }, sys ? `${usedRam}/${sys.mem_total_mb} MB` : '-')),
+    h('div', { class: 'metric-tile' },
+      h('div', { class: 'm-label' }, 'SUHU'),
+      h('div', { class: 'm-val' }, temp),
+      h('div', { class: 'm-sub' }, 'ARM64 Thermal')),
+    h('div', { class: 'metric-tile' },
+      h('div', { class: 'm-label' }, 'UPTIME'),
+      h('div', { class: 'm-val' }, uptime),
+      h('div', { class: 'm-sub' }, `${activeCount}/${apps.length} App Aktif`))
+  );
+
+  const hallCard = h('div', { class: 'card' },
+    h('h3', {}, 'Koneksi Bumiayu Hall (Port 1001)'),
+    h('p', {}, 'API Integrasi v2.0.1 siap digunakan: GET /api/v1/integration/manifest & POST /api/v1/integration/control.'),
+    h('div', { class: 'row', style: 'margin-top:10px;' },
+      h('button', { class: 'ghost', onclick: () => { tab = 'bridge'; render(); } }, 'Buka Tab Bridge'),
+      h('button', { class: 'good', onclick: () => { tab = 'apps'; render(); } }, 'Kelola WebApps')
+    )
+  );
+
+  view.replaceChildren(metrics, hallCard);
+}
+
+async function renderBridge() {
+  const card = h('div', { class: 'card' },
+    h('h3', {}, 'Bridge Integrasi Bumiayu Hall'),
+    h('p', {}, 'Gunakan endpoint berikut dari Bumiayu Hall (Port 1001) dengan header X-Bumiayu-Bridge-Token:'),
+    h('div', { style: 'margin:10px 0; font-family:monospace; font-size:12px; background:var(--panel); padding:10px; border-radius:8px;' },
+      h('div', {}, 'GET  /api/v1/integration/manifest'),
+      h('div', {}, 'POST /api/v1/integration/control'),
+      h('div', {}, 'PROXY /p/<slug>/')
+    ),
+    h('div', { class: 'row' },
+      h('button', { class: 'good', onclick: async () => {
+        try {
+          const r = await api('v1/integration/manifest');
+          toast(`Ping OK: ${(r.apps || []).length} WebApp terdaftar`);
+        } catch (e) { toast('Ping gagal: ' + e.message); }
+      } }, 'Test Ping Manifest')
+    )
+  );
+  view.replaceChildren(card);
+}
+
+async function renderSettings() {
+  const card = h('div', { class: 'card' },
+    h('h3', {}, 'Setelan & Keamanan Mastermind v2.0.1'),
+    h('p', {}, 'Kelola tampilan, pembaruan sistem, dan sesi admin.'),
+    h('div', { class: 'row', style: 'margin-top:12px; flex-wrap:wrap; gap:8px;' },
+      h('button', { class: 'ghost', onclick: () => $('#mode-toggle')?.click() }, 'Ganti Mode Siang/Malam'),
+      h('button', { class: 'good', onclick: () => openMastermindSystemModal() }, 'Cek Update Mastermind'),
+      h('button', { class: 'danger', onclick: () => $('#logout')?.click() }, 'Keluar')
+    )
+  );
+  view.replaceChildren(card);
+}
+
 async function render() {
   if (tab !== 'city' && cityAnimId) { cancelAnimationFrame(cityAnimId); cityAnimId = null; }
   document.querySelectorAll('nav [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   try {
+    if (tab === 'home') {
+      await renderHome();
+      return;
+    }
+
+    if (tab === 'bridge') {
+      await renderBridge();
+      return;
+    }
+
+    if (tab === 'settings') {
+      await renderSettings();
+      return;
+    }
+
     if (tab === 'city') {
-      await renderCity();
+      view.replaceChildren(
+        h('div', { class: 'coming-soon-3d' },
+          h('span', { class: 'coming-soon-badge' }, 'COMING SOON — v2.1.0'),
+          h('h2', { style: 'margin:0 0 8px; font-weight:500;' }, 'Bumiayu Zen Office 3D Visualization'),
+          h('p', { class: 'dim', style: 'max-width:460px; margin:0 auto 16px;' },
+            'Slot visualisasi 3D interaktif disiapkan untuk rilis v2.1.0 agar performa dashboard v2.0.1 tetap ultra-ringan di perangkat ARM64.'),
+          h('button', { class: 'ghost', onclick: () => toast('Roadmap 3D: Sinkronisasi status real-time dari /api/v1/integration/manifest') }, 'Lihat Roadmap 3D')
+        )
+      );
       return;
     }
 

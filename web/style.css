@@ -19,6 +19,82 @@
   --shadow: rgba(15, 23, 42, 0.06);
 }
 
+.nav-lbl-desk { display: inline; }
+.nav-lbl-mob { display: none; }
+@media (max-width: 767px) {
+  .main-nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  #nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+    width: 100%;
+  }
+  #nav .nav-tab-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 2px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+  }
+  #nav .nav-tab-btn.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .nav-ico { font-size: 18px; line-height: 1; }
+  .nav-lbl-desk { display: none; }
+  .nav-lbl-mob { display: block; font-size: 11px; line-height: 1.1; white-space: nowrap; }
+  #view { padding-bottom: 84px; }
+}
+
+/* Large Display Metrics (Clean Minimalist v2.0.1+) */
+.metrics-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.metric-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.metric-tile .m-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.metric-tile .m-val { font-size: 2.25rem; font-weight: 300; font-variant-numeric: tabular-nums; color: var(--ink); margin-top: 4px; line-height: 1.1; }
+.metric-tile .m-sub { font-size: 12px; color: var(--dim); margin-top: 6px; }
+
+/* 3D Coming Soon Slot */
+.coming-soon-3d {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 40px 24px;
+  text-align: center;
+  background: var(--panel);
+}
+.coming-soon-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
 /* Login-state isolation & post-login reveal animation */
 body.is-login .top,
 body.is-login .main-nav-bar,
