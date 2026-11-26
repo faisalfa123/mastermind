@@ -1056,7 +1056,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                         let asset_name = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.asset.as_str()).unwrap_or(*id);
                         let lang = cat_entry.as_ref().and_then(|e| e.batasan.as_ref()).map(|b| b.app.language.as_str()).unwrap_or("go");
 
-                        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "").replace('\r', "");
+                        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace(['\n', '\r'], "");
                         let new_toml = format!(
 "[app]
 id = \"{}\"
