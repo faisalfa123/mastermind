@@ -39,13 +39,14 @@ fn hdr(k: &str, v: &str) -> Header { Header::from_bytes(k.as_bytes(), v.as_bytes
 
 fn secure(mut r: Resp, cache: &str) -> Resp {
     for (k, v) in [
-        ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+        ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://100.79.122.76:1001; manifest-src 'self'; worker-src 'self'; frame-ancestors 'self' http://100.79.122.76:1001 http://localhost:1001 http://127.0.0.1:1001; base-uri 'none'; form-action 'self'"),
         ("Strict-Transport-Security", "max-age=63072000"),
         ("X-Content-Type-Options", "nosniff"),
-        ("X-Frame-Options", "DENY"),
         ("Referrer-Policy", "no-referrer"),
-        ("Cross-Origin-Opener-Policy", "same-origin"),
-        ("Cross-Origin-Resource-Policy", "same-origin"),
+        ("Cross-Origin-Resource-Policy", "cross-origin"),
+        ("Access-Control-Allow-Origin", "http://100.79.122.76:1001"),
+        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type, X-CSRF"),
         ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
         ("Cache-Control", cache),
     ] { r.add_header(hdr(k, v)); }

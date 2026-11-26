@@ -2009,16 +2009,16 @@ let _cityScriptsLoaded = null;
 function ensureCityScripts() {
   if (_cityScriptsLoaded) return _cityScriptsLoaded;
   const scripts = [
-    '/three.min.js',
-    '/OrbitControls.js',
-    '/workers/audio.js?v=0.2.4',
-    '/workers/financial.js?v=0.2.4',
-    '/workers/media.js?v=0.2.4',
-    '/workers/system.js?v=0.2.4',
-    '/workers/webWorker.js?v=0.2.4',
-    '/workerFactory.js?v=0.2.4',
-    '/officeWorld.js?v=0.2.4',
-    '/scene.js?v=0.2.4',
+    'three.min.js',
+    'OrbitControls.js',
+    'workers/audio.js?v=0.2.5',
+    'workers/financial.js?v=0.2.5',
+    'workers/media.js?v=0.2.5',
+    'workers/system.js?v=0.2.5',
+    'workers/webWorker.js?v=0.2.5',
+    'workerFactory.js?v=0.2.5',
+    'officeWorld.js?v=0.2.5',
+    'scene.js?v=0.2.5',
   ];
   _cityScriptsLoaded = scripts.reduce((p, src) => p.then(() => new Promise((res, rej) => {
     const s = document.createElement('script');
