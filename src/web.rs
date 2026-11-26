@@ -541,7 +541,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 "stop" => ipc::Cmd::Stop(slug.into()),
                 _ => ipc::Cmd::Restart(slug.into()),
             };
-            return match helper::call(&app.cfg, cmd) {
+            return match ipc::call(&app.cfg.sock_path, cmd) {
                 Ok(m) => json_resp(200, json!({ "ok": true, "slug": slug, "action": action, "message": m })),
                 Err(e) => err(422, &e),
             };
