@@ -257,6 +257,7 @@ pub fn run() -> Result<(), String> {
         totp_b32: legacy_b32,
         two_factor: Some(two_factor),
     });
+    let bridge_token = st.state.hall_token.get_or_insert_with(|| crate::auth::rand_hex(24)).clone();
     st.save().map_err(|e| e.to_string())?;
     st.log("ssh-setup", "Initial setup wizard completed");
 
@@ -284,6 +285,8 @@ pub fn run() -> Result<(), String> {
 
     println!("Buka Web UI di browser Anda:");
     println!("👉 \x1b[1;36mhttps://{}:{}\x1b[0m", cfg.bind, cfg.port);
+    println!("\n\x1b[1;33mX-Bumiayu-Bridge-Token (untuk Bumiayu Hall):\x1b[0m");
+    println!("🔑 \x1b[1;37m{}\x1b[0m", bridge_token);
     println!("\nAktifkan service systemd:");
     println!("  sudo systemctl daemon-reload");
     println!("  sudo systemctl enable --now mastermind-helper mastermind-web");
