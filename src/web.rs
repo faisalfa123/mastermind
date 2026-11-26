@@ -533,11 +533,10 @@ fn handle(app: &Arc<App>, mut req: Request) {
             let valid_tok = {
                 let mut s = app.store.lock().unwrap();
                 let tok = s.state.hall_token.get_or_insert_with(|| {
-                    let t = auth::rand_hex(24);
-                    t
+                    hex::encode(rand::random::<[u8; 24]>())
                 }).clone();
                 let _ = s.save();
-                !token_hdr.is_empty() && auth::ct_eq(token_hdr.as_bytes(), tok.as_bytes())
+                !token_hdr.is_empty() && bool::from(subtle::ConstantTimeEq::ct_eq(token_hdr.as_bytes(), tok.as_bytes()))
             };
             if !valid_tok && app.session(&req).is_none() {
                 return err(401, "unauthorized");

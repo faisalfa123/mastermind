@@ -257,7 +257,7 @@ pub fn run() -> Result<(), String> {
         totp_b32: legacy_b32,
         two_factor: Some(two_factor),
     });
-    let bridge_token = st.state.hall_token.get_or_insert_with(|| crate::auth::rand_hex(24)).clone();
+    let bridge_token = st.state.hall_token.get_or_insert_with(|| hex::encode(rand::random::<[u8; 24]>())).clone();
     st.save().map_err(|e| e.to_string())?;
     st.log("ssh-setup", "Initial setup wizard completed");
 

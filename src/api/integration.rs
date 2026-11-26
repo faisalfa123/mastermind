@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::io::Cursor;
 use tiny_http::{Header, Method, Request, Response, StatusCode};
 
-use crate::{auth, executor, store};
+use crate::{executor, store};
 use subtle::ConstantTimeEq;
 
 pub type Resp = Response<Cursor<Vec<u8>>>;
@@ -36,7 +36,7 @@ pub fn verify_bridge_token(req: &Request, st: &mut store::Store) -> bool {
         })
         .map(|h| h.value.as_str())
         .unwrap_or("");
-    let tok = st.state.hall_token.get_or_insert_with(|| auth::rand_hex(24)).clone();
+    let tok = st.state.hall_token.get_or_insert_with(|| hex::encode(rand::random::<[u8; 24]>())).clone();
     let _ = st.save();
     !token_hdr.is_empty() && bool::from(token_hdr.as_bytes().ct_eq(tok.as_bytes()))
 }
