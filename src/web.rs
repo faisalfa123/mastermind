@@ -544,7 +544,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
             }
             let s = app.store.lock().unwrap();
             let list: Vec<Value> = s.state.apps.iter().map(|(id, a)| {
-                let st = systemd::status(id);
+                let st = crate::executor::control_service(id, "status").unwrap_or_else(|_| "inactive".into());
                 json!({
                     "name": id,
                     "slug": id,
@@ -560,7 +560,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
             let token_hdr = header_of(&req, "X-Bumiayu-Hall-Token").unwrap_or_default();
             let valid_tok = {
                 let s = app.store.lock().unwrap();
-                s.state.hall_token.as_deref().map(|t| !token_hdr.is_empty() && auth::ct_eq(token_hdr.as_bytes(), t.as_bytes())).unwrap_or(false)
+                s.state.hall_token.as_deref().map(|t| !token_hdr.is_empty() && bool::from(subtle::ConstantTimeEq::ct_eq(token_hdr.as_bytes(), t.as_bytes()))).unwrap_or(false)
             };
             if !valid_tok && app.session(&req).is_none() {
                 return err(401, "unauthorized");
@@ -570,12 +570,8 @@ fn handle(app: &Arc<App>, mut req: Request) {
             let action = b["action"].as_str().unwrap_or("").trim();
             if !ipc::valid_id(slug) { return err(400, "invalid slug"); }
             if !matches!(action, "start" | "stop" | "restart") { return err(400, "invalid action"); }
-            let cmd = match action {
-                "start" => ipc::Command::Start(slug.into()),
-                "stop" => ipc::Command::Stop(slug.into()),
-                _ => ipc::Command::Restart(slug.into()),
-            };
-            return match ipc::call(&app.cfg.helper_socket, cmd) {
+            let cmd_line = format!("{action} {slug}");
+            return match ipc::call(&app.cfg.helper_socket, &cmd_line) {
                 Ok(m) => json_resp(200, json!({ "ok": true, "slug": slug, "action": action, "message": m })),
                 Err(e) => err(422, &e),
             };

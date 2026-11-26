@@ -3,7 +3,8 @@ use serde_json::{json, Value};
 use std::io::Cursor;
 use tiny_http::{Header, Method, Request, Response, StatusCode};
 
-use crate::{auth, executor, store, systemd};
+use crate::{auth, executor, store};
+use subtle::ConstantTimeEq;
 
 pub type Resp = Response<Cursor<Vec<u8>>>;
 
@@ -37,7 +38,7 @@ pub fn verify_bridge_token(req: &Request, st: &mut store::Store) -> bool {
         .unwrap_or("");
     let tok = st.state.hall_token.get_or_insert_with(|| auth::rand_hex(24)).clone();
     let _ = st.save();
-    !token_hdr.is_empty() && auth::ct_eq(token_hdr.as_bytes(), tok.as_bytes())
+    !token_hdr.is_empty() && bool::from(token_hdr.as_bytes().ct_eq(tok.as_bytes()))
 }
 
 /// `GET /api/v1/integration/manifest` — Read-Only manifest of active GUI WebApps for Bumiayu Hall.
@@ -45,7 +46,7 @@ pub fn handle_manifest(apps: Vec<(String, store::Installed)>) -> Resp {
     let list: Vec<Value> = apps.into_iter()
         .filter(|(id, a)| executor::validate_webapp(id, a.port).is_ok())
         .map(|(id, a)| {
-            let st = systemd::status(&id);
+            let st = executor::control_service(&id, "status").unwrap_or_else(|_| "inactive".into());
             json!({
                 "name": id,
                 "slug": id,
