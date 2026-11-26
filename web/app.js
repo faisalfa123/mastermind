@@ -1367,7 +1367,7 @@ function appCard(a) {
 
   const configForm = h('form', { onsubmit: async (e) => {
     e.preventDefault();
-    const pw = prompt(`Masukkan PASSWORD login Mastermind untuk menerapkan konfigurasi ${a.id}:`);
+    const pw = await ask(`Masukkan PASSWORD login Mastermind untuk menerapkan konfigurasi ${a.id}:`, true);
     if (!pw) return;
 
     saveBtn.disabled = true;

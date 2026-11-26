@@ -342,8 +342,8 @@ main{max-width:1020px;margin:0 auto;padding:16px}
   animation:pop .25s steps(4);
 }
 @keyframes pop{from{transform:scale(.95);opacity:0}}
-.card h3{margin:0 0 6px;font-size:11px;color:var(--highlight)}
-.card p{margin:4px 0;color:var(--dim);font-size:8px;word-break:break-word}
+.card h3{margin:0 0 6px;font-size:14px;color:var(--highlight)}
+.card p{margin:4px 0;color:var(--dim);font-size:13px;word-break:break-word}
 .row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
 .tag{display:inline-block;padding:2px 6px;font-size:7px;background:var(--panel2);color:var(--accent-soft);margin-right:4px;border:1px solid var(--border)}
 
@@ -360,15 +360,15 @@ main{max-width:1020px;margin:0 auto;padding:16px}
 .bar.crit i{background:repeating-linear-gradient(90deg,var(--danger) 0 6px,var(--bg) 6px 8px)}
 
 .sys{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
-.sys div{font-size:8px;color:var(--dim)}
+.sys div{font-size:12px;color:var(--dim)}
 
 /* Login Form */
 .login{max-width:380px;margin:8vh auto;text-align:center}
 .login .kodama-mascot{transform:scale(2);margin:16px auto 24px}
-.login label{display:block;text-align:left;margin:12px 0 5px;color:var(--accent);font-size:8px}
-.err{color:var(--danger-soft);min-height:20px;margin-top:12px;font-size:8px}
-.banner{background:var(--warm);color:#fff;text-align:center;padding:7px;font-size:8px}
-.lock{border-left:8px solid var(--danger)}
+.login label{display:block;text-align:left;margin:12px 0 5px;color:var(--accent);font-size:12px}
+.err{color:var(--danger);min-height:20px;margin-top:12px;font-size:12px;font-weight:600}
+.banner{background:var(--warm);color:#fff;text-align:center;padding:8px;font-size:12px}
+.lock{border:1px solid var(--danger);background:var(--danger-soft)}
 
 table{width:100%;border-collapse:collapse;font-size:8px;margin-top:8px}
 td,th{padding:7px;text-align:left;border-bottom:2px solid var(--panel2);word-break:break-all}

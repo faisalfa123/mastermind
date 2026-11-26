@@ -9,6 +9,11 @@ Semua perubahan penting pada **Mastermind** dicatat di file ini.
 
 ---
 
+## [0.2.05-canary] - 2026-11-26
+### Fixed
+- **Keamanan Input Password (`web/app.js`)**: Mengganti `prompt()` bawaan browser pada konfigurasi aplikasi dengan modal in-app (`ask(..., true)` / `<dialog id="dlg">`) agar input password tetap terlindungi di dalam aplikasi.
+- **Tipografi, Kontras, & Kebersihan UI (`web/style.css`)**: Meningkatkan ukuran font minimum agar terbaca di layar DPI tinggi, memperbaiki kontras teks error (`.err`), dan mengganti border samping pada `.lock` dengan full border & tint yang bersih.
+
 ## [0.2.04-canary] - 2026-11-26
 ### Fixed
 - **Sandbox (`src/systemd.rs`)**: Menambahkan `HOME=/var/lib/mastermind/{id}` dan `XDG_CACHE_HOME=/var/lib/mastermind/{id}/.cache` agar binary sandbox seperti `yt-dlp` (Senandung) dapat berjalan dan menulis cache tanpa gagal.
