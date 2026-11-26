@@ -147,7 +147,7 @@ fn self_update(cfg: &Config) -> Result<String, String> {
 
     // 2. Verifikasi Checksums (wajib ada di staging, tolak symlink)
     let cs_file = st.join("checksums.txt");
-    let cs_bytes = read_nofollow(&cs_file)
+    let cs_bytes = read_nofollow(&cs_file, 64 << 10)
         .map_err(|e| format!("checksums.txt missing or unreadable: {e}"))?;
     let content = String::from_utf8(cs_bytes)
         .map_err(|_| "checksums.txt is not valid UTF-8".to_string())?;
