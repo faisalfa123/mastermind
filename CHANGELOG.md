@@ -9,6 +9,13 @@ Semua perubahan penting pada **Mastermind** dicatat di file ini.
 
 ---
 
+## [0.3.0-beta] - 2026-11-26
+### Added
+- **Bumiayu Hall Integration API (`src/web.rs`, `src/store.rs`)**:
+  - `GET /api/v1/apps` (Read-Only) & `POST /api/v1/apps/control` (Execution-Only: `start|stop|restart`) terproteksi oleh `X-Bumiayu-Hall-Token`.
+  - Header CORS & `frame-ancestors` untuk integrasi aman dengan Bumiayu Hall (`100.79.122.76:1001` / `127.0.0.1:*`).
+- **iOS Safari PWA-Safe Open App (`web/app.js`)**: Otomatis menggunakan `/p/{slug}/` dengan `target="_self"` saat berjalan di bawah reverse proxy Bumiayu Hall.
+
 ## [0.2.05-canary] - 2026-11-26
 ### Fixed
 - **Keamanan Input Password (`web/app.js`)**: Mengganti `prompt()` bawaan browser pada konfigurasi aplikasi dengan modal in-app (`ask(..., true)` / `<dialog id="dlg">`) agar input password tetap terlindungi di dalam aplikasi.
