@@ -1,5 +1,6 @@
 //! Native Systemd Orchestrator (v2.0.1) — Shared Environment, Execution-Only.
 //! Replaces legacy V1 sandboxing with direct `/etc/systemd/system/bumiayu-*.service` management.
+#![allow(dead_code)]
 use std::io::Write;
 use std::process::{Command, Stdio};
 
