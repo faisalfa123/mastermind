@@ -1,10 +1,12 @@
 mod adapt;
 mod admin;
+mod api;
 mod audit;
 mod auth;
 mod batasan;
 mod config;
 mod discover;
+mod executor;
 mod helper;
 mod installer;
 mod ipc;

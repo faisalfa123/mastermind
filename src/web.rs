@@ -493,6 +493,40 @@ fn handle(app: &Arc<App>, mut req: Request) {
             return json_resp(200, json!({"csrf": csrf})).with_header(hdr("Set-Cookie", &format!("mm_session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{sec}")));
         }
 
+        // ---- Bumiayu Hall v2.0.1 Integration API & Centralized Reverse Proxy (/p/<slug>/) ----
+        if url == "/api/v1/integration/manifest" && method == Method::Get {
+            let mut s = app.store.lock().unwrap();
+            if !crate::api::integration::verify_bridge_token(&req, &mut s) && app.session(&req).is_none() {
+                return err(401, "unauthorized");
+            }
+            let apps: Vec<store::Installed> = s.state.apps.values().cloned().collect();
+            return crate::api::integration::handle_manifest(apps);
+        }
+        if url == "/api/v1/integration/control" && method == Method::Post {
+            let mut s = app.store.lock().unwrap();
+            if !crate::api::integration::verify_bridge_token(&req, &mut s) && app.session(&req).is_none() {
+                return err(401, "unauthorized");
+            }
+            drop(s);
+            let b = read_json(&mut req);
+            let slug = b["slug"].as_str().unwrap_or("").trim();
+            let action = b["action"].as_str().unwrap_or("").trim();
+            return crate::api::integration::handle_control(slug, action);
+        }
+        if let Some(rest) = url.strip_prefix("/p/") {
+            let mut parts = rest.splitn(2, '/');
+            let slug = parts.next().unwrap_or("");
+            let subpath = parts.next().unwrap_or("");
+            let port = {
+                let s = app.store.lock().unwrap();
+                s.state.apps.get(slug).map(|a| a.port).unwrap_or(0)
+            };
+            if port > 0 {
+                return crate::api::integration::handle_proxy(&req, port, subpath);
+            }
+            return err(404, "app not found");
+        }
+
         // ---- Bumiayu Hall Integration API (X-Bumiayu-Hall-Token, Read-Only / Execution-Only) ----
         if url == "/api/v1/apps" && method == Method::Get {
             let token_hdr = header_of(&req, "X-Bumiayu-Hall-Token").unwrap_or_default();
