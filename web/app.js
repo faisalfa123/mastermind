@@ -2910,6 +2910,36 @@ async function renderBridge() {
   view.replaceChildren(card);
 }
 
+async function renderAddApp() {
+  const left = h('div', { class: 'card' },
+    h('h3', {}, 'Auto-Scan Port HTTP/HTTPS Aktif'),
+    h('p', {}, 'Klik port aktif untuk mengisi form registrasi secara otomatis (alat CLI seperti yt-dlp/ffmpeg/smb diblokir).'),
+    h('div', { class: 'row', style: 'margin-top:10px;' },
+      h('button', { class: 'ghost', onclick: () => toast('Memindai port lokal aktif...') }, 'Scan Port Lokal')
+    )
+  );
+  const slugInp = h('input', { placeholder: 'senandung' });
+  const execInp = h('input', { placeholder: '/usr/local/bin/senandung' });
+  const dirInp = h('input', { placeholder: '/opt/senandung' });
+  const portInp = h('input', { type: 'number', placeholder: '8080' });
+  const right = h('form', { class: 'card', onsubmit: async e => {
+    e.preventDefault();
+    const rootPw = await ask('Masukkan Password Root Shell OS untuk menulis unit systemd:', true);
+    if (!rootPw) return;
+    toast(`Mendaftarkan bumiayu-${slugInp.value.trim()}.service...`);
+  } },
+    h('h3', {}, 'Daftarkan WebApp Baru (Systemd)'),
+    h('label', {}, 'SLUG APLIKASI'), slugInp,
+    h('label', {}, 'EXEC START'), execInp,
+    h('label', {}, 'WORKING DIRECTORY'), dirInp,
+    h('label', {}, 'PORT HTTP/HTTPS'), portInp,
+    h('div', { class: 'row', style: 'margin-top:12px;' },
+      h('button', { type: 'submit', class: 'good' }, 'Daftarkan & Aktifkan Service')
+    )
+  );
+  view.replaceChildren(h('div', { class: 'grid-2col' }, left, right));
+}
+
 async function renderSettings() {
   const card = h('div', { class: 'card' },
     h('h3', {}, 'Setelan & Keamanan Mastermind v2.0.1'),
@@ -2934,6 +2964,11 @@ async function render() {
 
     if (tab === 'bridge') {
       await renderBridge();
+      return;
+    }
+
+    if (tab === 'add') {
+      await renderAddApp();
       return;
     }
 
