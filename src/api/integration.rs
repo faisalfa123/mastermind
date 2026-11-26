@@ -41,16 +41,16 @@ pub fn verify_bridge_token(req: &Request, st: &mut store::Store) -> bool {
 }
 
 /// `GET /api/v1/integration/manifest` — Read-Only manifest of active GUI WebApps for Bumiayu Hall.
-pub fn handle_manifest(apps: Vec<store::Installed>) -> Resp {
+pub fn handle_manifest(apps: Vec<(String, store::Installed)>) -> Resp {
     let list: Vec<Value> = apps.into_iter()
-        .filter(|a| executor::validate_webapp(&a.id, a.port).is_ok())
-        .map(|a| {
-            let st = systemd::status(&a.id);
+        .filter(|(id, a)| executor::validate_webapp(id, a.port).is_ok())
+        .map(|(id, a)| {
+            let st = systemd::status(&id);
             json!({
-                "name": a.id,
-                "slug": a.id,
+                "name": id,
+                "slug": id,
                 "port": a.port,
-                "proxy_path": format!("/p/{}/", a.id),
+                "proxy_path": format!("/p/{}/", id),
                 "status": st,
                 "running": st == "active",
                 "icon": "globe"

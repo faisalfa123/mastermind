@@ -499,7 +499,7 @@ fn handle(app: &Arc<App>, mut req: Request) {
             if !crate::api::integration::verify_bridge_token(&req, &mut s) && app.session(&req).is_none() {
                 return err(401, "unauthorized");
             }
-            let apps: Vec<store::Installed> = s.state.apps.values().cloned().collect();
+            let apps: Vec<(String, store::Installed)> = s.state.apps.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             return crate::api::integration::handle_manifest(apps);
         }
         if url == "/api/v1/integration/control" && method == Method::Post {
@@ -543,11 +543,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
                 return err(401, "unauthorized");
             }
             let s = app.store.lock().unwrap();
-            let list: Vec<Value> = s.state.apps.values().map(|a| {
-                let st = systemd::status(&a.id);
+            let list: Vec<Value> = s.state.apps.iter().map(|(id, a)| {
+                let st = systemd::status(id);
                 json!({
-                    "name": a.id,
-                    "slug": a.id,
+                    "name": id,
+                    "slug": id,
                     "port": a.port,
                     "status": st,
                     "running": st == "active",
@@ -571,11 +571,11 @@ fn handle(app: &Arc<App>, mut req: Request) {
             if !ipc::valid_id(slug) { return err(400, "invalid slug"); }
             if !matches!(action, "start" | "stop" | "restart") { return err(400, "invalid action"); }
             let cmd = match action {
-                "start" => ipc::Cmd::Start(slug.into()),
-                "stop" => ipc::Cmd::Stop(slug.into()),
-                _ => ipc::Cmd::Restart(slug.into()),
+                "start" => ipc::Command::Start(slug.into()),
+                "stop" => ipc::Command::Stop(slug.into()),
+                _ => ipc::Command::Restart(slug.into()),
             };
-            return match ipc::call(&app.cfg.sock_path, cmd) {
+            return match ipc::call(&app.cfg.helper_socket, cmd) {
                 Ok(m) => json_resp(200, json!({ "ok": true, "slug": slug, "action": action, "message": m })),
                 Err(e) => err(422, &e),
             };
