@@ -39,14 +39,14 @@ fn hdr(k: &str, v: &str) -> Header { Header::from_bytes(k.as_bytes(), v.as_bytes
 
 fn secure(mut r: Resp, cache: &str) -> Resp {
     for (k, v) in [
-        ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://100.79.122.76:1001; manifest-src 'self'; worker-src 'self'; frame-ancestors 'self' http://100.79.122.76:1001 http://localhost:1001 http://127.0.0.1:1001; base-uri 'none'; form-action 'self'"),
+        ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://100.79.122.76:1001; manifest-src 'self'; worker-src 'self'; frame-ancestors 'self' http://127.0.0.1:* http://localhost:* http://100.*; base-uri 'none'; form-action 'self'"),
         ("Strict-Transport-Security", "max-age=63072000"),
         ("X-Content-Type-Options", "nosniff"),
         ("Referrer-Policy", "no-referrer"),
         ("Cross-Origin-Resource-Policy", "cross-origin"),
         ("Access-Control-Allow-Origin", "http://100.79.122.76:1001"),
         ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
-        ("Access-Control-Allow-Headers", "Content-Type, X-CSRF"),
+        ("Access-Control-Allow-Headers", "Content-Type, X-CSRF, X-Bumiayu-Hall-Token"),
         ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
         ("Cache-Control", cache),
     ] { r.add_header(hdr(k, v)); }
@@ -491,6 +491,60 @@ fn handle(app: &Arc<App>, mut req: Request) {
             crate::notify::send(&app.cfg, "Login", &format!("Login Mastermind dari {ip}"));
             let sec = if app.cfg.cert.is_some() { "; Secure" } else { "" };
             return json_resp(200, json!({"csrf": csrf})).with_header(hdr("Set-Cookie", &format!("mm_session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{sec}")));
+        }
+
+        // ---- Bumiayu Hall Integration API (X-Bumiayu-Hall-Token, Read-Only / Execution-Only) ----
+        if url == "/api/v1/apps" && method == Method::Get {
+            let token_hdr = header_of(&req, "X-Bumiayu-Hall-Token").unwrap_or_default();
+            let valid_tok = {
+                let mut s = app.store.lock().unwrap();
+                let tok = s.state.hall_token.get_or_insert_with(|| {
+                    let t = auth::rand_hex(24);
+                    t
+                }).clone();
+                let _ = s.save();
+                !token_hdr.is_empty() && auth::ct_eq(token_hdr.as_bytes(), tok.as_bytes())
+            };
+            if !valid_tok && app.session(&req).is_none() {
+                return err(401, "unauthorized");
+            }
+            let s = app.store.lock().unwrap();
+            let list: Vec<Value> = s.state.apps.values().map(|a| {
+                let st = systemd::status(&a.id);
+                json!({
+                    "name": a.id,
+                    "slug": a.id,
+                    "port": a.port,
+                    "status": st,
+                    "running": st == "active",
+                    "icon": "globe"
+                })
+            }).collect();
+            return json_resp(200, json!(list));
+        }
+        if url == "/api/v1/apps/control" && method == Method::Post {
+            let token_hdr = header_of(&req, "X-Bumiayu-Hall-Token").unwrap_or_default();
+            let valid_tok = {
+                let s = app.store.lock().unwrap();
+                s.state.hall_token.as_deref().map(|t| !token_hdr.is_empty() && auth::ct_eq(token_hdr.as_bytes(), t.as_bytes())).unwrap_or(false)
+            };
+            if !valid_tok && app.session(&req).is_none() {
+                return err(401, "unauthorized");
+            }
+            let b = read_json(&mut req);
+            let slug = b["slug"].as_str().unwrap_or("").trim();
+            let action = b["action"].as_str().unwrap_or("").trim();
+            if !ipc::valid_id(slug) { return err(400, "invalid slug"); }
+            if !matches!(action, "start" | "stop" | "restart") { return err(400, "invalid action"); }
+            let cmd = match action {
+                "start" => ipc::Cmd::Start(slug.into()),
+                "stop" => ipc::Cmd::Stop(slug.into()),
+                _ => ipc::Cmd::Restart(slug.into()),
+            };
+            return match helper::call(&app.cfg, cmd) {
+                Ok(m) => json_resp(200, json!({ "ok": true, "slug": slug, "action": action, "message": m })),
+                Err(e) => err(422, &e),
+            };
         }
 
         // ---- everything below needs a session; mutations need the CSRF header too ----

@@ -1159,19 +1159,20 @@ function appCard(a) {
   tabLogsBtn.onclick = () => switchCardTab('logs');
   tabDiagBtn.onclick = () => switchCardTab('diag');
 
-  // Direct HTTP link (murni http:// tanpa s) dengan tombol tes akses
+  // Gunakan subpath reverse proxy Bumiayu Hall (/p/{slug}/) jika aktif agar iOS PWA tetap standalone
+  const underHallProxy = window.location.pathname.startsWith('/p/');
   const appHost = window.location.hostname;
   const appPortNum = a.port || 0;
-  const appUrl = `http://${appHost}:${appPortNum}`;
+  const appUrl = underHallProxy ? `/p/${a.id}/` : `http://${appHost}:${appPortNum}`;
 
   const visitBtn = appPortNum > 0
     ? h('a', {
         href: appUrl,
-        target: '_blank',
+        target: underHallProxy ? '_self' : '_blank',
         rel: 'noopener noreferrer',
         class: 'btn good',
         style: 'font-size: 11px; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;',
-        title: `Buka langsung ke ${appUrl} (HTTP murni)`
+        title: `Buka aplikasi di ${appUrl}`
       }, 'Buka App ↗')
     : h('button', {
         class: 'btn ghost',

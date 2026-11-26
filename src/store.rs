@@ -108,6 +108,8 @@ pub struct State {
     pub sessions: BTreeMap<String, PersistedSession>,
     #[serde(default)]
     pub github_token: Option<String>,
+    #[serde(default)]
+    pub hall_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
